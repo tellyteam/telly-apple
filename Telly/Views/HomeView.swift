@@ -6,16 +6,16 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
-                if let hero = app.history.first { Hero(entry: hero) } else {
+                if let hero = app.continueWatching.first { Hero(entry: hero) } else {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Welcome to telly").font(.largeTitle.weight(.bold))
                         Text("Pick something from Live TV, Series or Films, and it'll show up here next time.").foregroundStyle(Theme.muted)
                     }
                     .padding(.horizontal, 24).padding(.top, 20)
                 }
-                if !app.history.isEmpty {
+                if !app.continueWatching.isEmpty {
                     Shelf(title: "Continue watching") {
-                        ForEach(app.history, id: \.slot) { h in ContinueCard(entry: h) }
+                        ForEach(app.continueWatching, id: \.slot) { h in ContinueCard(entry: h) }
                     }
                 }
                 let mine = app.favouriteItems()
@@ -59,7 +59,8 @@ struct HomeView: View {
             .padding(.bottom, 40)
         }
         .refreshable { await app.refresh() }
-        .navigationTitle("Home")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .ignoresSafeArea(edges: .top)
         .background(Theme.background.ignoresSafeArea())
         // A see-through bar rather than none, so the sidebar button stays.
@@ -78,7 +79,7 @@ private struct Hero: View {
         let p = entry.live ? nil : app.progressOf(item.url)
         ZStack(alignment: .bottomLeading) {
             // Runs up under the status bar, so the top of the screen matches the rest of Home.
-            (entry.art ?? item.logo).map { Artwork(url: $0, title: "") }
+            ZStack { if let art = entry.art ?? item.logo { Artwork(url: art, title: "") } }
                 .frame(maxWidth: .infinity).frame(height: 340)
                 .clipped()
                 .background(LinearGradient(colors: [Theme.accent.opacity(0.18), Theme.background], startPoint: .topTrailing, endPoint: .bottomLeading))

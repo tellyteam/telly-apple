@@ -271,6 +271,11 @@ final class AppModel {
         Store.write("progress", progress)
     }
 
+    /** Continue watching: history without films that have been watched to the end. */
+    var continueWatching: [LastWatched] {
+        history.filter { !($0.isFilm && progressOf($0.current.url)?.finished == true) }
+    }
+
     func seriesHistory(_ seriesId: String) -> LastWatched? { history.first { $0.seriesId == seriesId } }
 
     func play(_ req: PlayRequest) {
