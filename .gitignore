@@ -1,0 +1,7 @@
+.DS_Store
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+# VLCKit is fetched by scripts/fetch-vlckit.sh, not committed
+Vendor/
