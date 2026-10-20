@@ -33,7 +33,15 @@ struct RootView: View {
                     List(selection: $section) {
                         ForEach(sections) { s in Label(s.rawValue, systemImage: s.icon).tag(s) }
                     }
-                    .navigationTitle("telly")
+                    // The wordmark, as large as on Fire TV and Mac, in place of a small bar title.
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        Text("telly")
+                            .font(.system(size: 40, weight: .black))
+                            .tracking(-1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 22).padding(.top, 4).padding(.bottom, 12)
+                    }
+                    .navigationBarTitleDisplayMode(.inline)
                     .safeAreaInset(edge: .bottom) {
                         if app.refreshing {
                             Label("Updating your lists…", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(Theme.muted).padding()
