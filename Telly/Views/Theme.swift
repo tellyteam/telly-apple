@@ -133,3 +133,12 @@ struct FavouriteMenuItem: View {
         }
     }
 }
+
+/** The telly wordmark: one drawing shared by every app and icon (SimpleIPTV/brand). */
+struct Wordmark: View {
+    var height: CGFloat = 28
+    var body: some View {
+        Image("Wordmark").resizable().renderingMode(.template).aspectRatio(contentMode: .fit)
+            .frame(height: height).foregroundStyle(.white).accessibilityLabel("telly")
+    }
+}

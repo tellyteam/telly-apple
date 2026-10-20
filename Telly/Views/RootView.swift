@@ -25,7 +25,7 @@ struct RootView: View {
         @Bindable var app = app
         Group {
             if !app.ready {
-                Text("telly").font(.system(size: 64, weight: .black)).frame(maxWidth: .infinity, maxHeight: .infinity)
+                Wordmark(height: 62).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if app.provider == nil {
                 SetupView(existing: nil)
             } else {
@@ -35,9 +35,7 @@ struct RootView: View {
                     }
                     // The wordmark, as large as on Fire TV and Mac, in place of a small bar title.
                     .safeAreaInset(edge: .top, spacing: 0) {
-                        Text("telly")
-                            .font(.system(size: 40, weight: .black))
-                            .tracking(-1)
+                        Wordmark(height: 38)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 22).padding(.top, 4).padding(.bottom, 12)
                     }

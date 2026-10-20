@@ -19,7 +19,7 @@ struct SetupView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("telly").font(.system(size: 44, weight: .black))
+                Wordmark(height: 42)
                 Text("Add your IPTV provider to start watching. telly doesn't come with any channels.")
                     .foregroundStyle(Theme.muted)
                 Picker("Type", selection: $xtream) {
