@@ -137,3 +137,27 @@ final class SyncLocalTests: XCTestCase {
         XCTAssertEqual(next.ledger.cleared, 30)
     }
 }
+
+final class SyncLinkTests: XCTestCase {
+    private let def = "https://telly-sync.tellyteam.workers.dev"
+
+    func testCarriesTheCodeAndOnlyACustomRelay() {
+        XCTAssertEqual(SyncLink.url(code: "ABCDEFGHJKMNPQRS", relay: def, defaultRelay: def), "telly://sync?code=ABCDEFGHJKMNPQRS")
+        let own = SyncLink.url(code: "ABCDEFGHJKMNPQRS", relay: "https://relay.example/", defaultRelay: def)
+        XCTAssertEqual(own, "telly://sync?code=ABCDEFGHJKMNPQRS&relay=https%3A%2F%2Frelay%2Eexample%2F")
+        XCTAssertEqual(SyncLink.parse(own, defaultRelay: def)?.relay, "https://relay.example/")
+    }
+
+    func testReadsWhatFireTVAndMacShow() {
+        // Fire TV (java.net.URLEncoder) and Mac (encodeURIComponent) encode the relay differently.
+        XCTAssertEqual(SyncLink.parse("telly://sync?code=ABCDEFGHJKMNPQRS&relay=https%3A%2F%2Frelay.example%2F", defaultRelay: def)?.relay, "https://relay.example/")
+        XCTAssertEqual(SyncLink.parse("telly://sync?code=abcd-efgh-jkmn-pqrs", defaultRelay: def)?.code, "ABCDEFGHJKMNPQRS")
+        XCTAssertNil(SyncLink.parse("https://evil.example/sync?code=ABCDEFGHJKMNPQRS", defaultRelay: def))
+        XCTAssertNil(SyncLink.parse("telly://sync?code=ABCDEFGHJKMNPQRS&relay=http%3A%2F%2Fplain", defaultRelay: def))
+        XCTAssertNil(SyncLink.parse("telly://sync?code=TOO-SHORT", defaultRelay: def))
+    }
+
+    func testDrawsAQRCode() {
+        XCTAssertNotNil(SyncLink.image("telly://sync?code=ABCDEFGHJKMNPQRS"))
+    }
+}

@@ -13,6 +13,7 @@ struct TellyApp: App {
                 .tint(Theme.accent)
                 .task { await model.start() }
                 .onChange(of: phase) { _, now in if now == .active { model.becameActive() } }
+                .onOpenURL { model.open($0) }
         }
     }
 }

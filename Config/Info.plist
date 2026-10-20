@@ -9,6 +9,20 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<!-- telly://sync?code=… links, from the QR code another device shows. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>io.github.tellyteam.telly.sync</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>telly</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>telly uses the camera only to read the QR code another device shows when you link them for sync.</string>
 	<!-- Keeps sound playing for picture in picture. -->
 	<key>UIBackgroundModes</key>
 	<array>

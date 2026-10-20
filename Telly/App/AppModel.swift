@@ -24,6 +24,12 @@ struct Meta: Codable, Equatable {
     var syncUnlocked: Bool?
 }
 
+struct PendingLink: Identifiable, Equatable {
+    let code: String
+    let relay: String
+    var id: String { code }
+}
+
 /** Kept in the Keychain: the link code is the household's only secret. */
 struct SyncConfig: Codable, Equatable {
     var code: String
@@ -62,6 +68,8 @@ final class AppModel {
     var player: PlayRequest?
 
     var sync: SyncConfig?
+    /** A sync link opened from a QR code, waiting for the user to confirm. */
+    var pendingLink: PendingLink?
     var syncBusy = false
     var syncedAt: Double?
     var syncError: String?
@@ -335,6 +343,22 @@ final class AppModel {
         meta.syncUnlocked = !syncShown || sync != nil
         Store.write("meta", meta)
         return syncShown
+    }
+
+    /** A `telly://sync` link (from the Camera app or the in-app scanner): asks before linking. */
+    func open(_ url: URL) {
+        guard let link = SyncLink.parse(url.absoluteString, defaultRelay: Self.defaultRelay) else { return }
+        if sync?.code == link.code { return }
+        pendingLink = PendingLink(code: link.code, relay: link.relay)
+    }
+
+    /** Links with a confirmed QR code; scanning one also shows Settings → Sync from then on. */
+    func confirmPendingLink() async throws {
+        guard let link = pendingLink else { return }
+        pendingLink = nil
+        meta.syncUnlocked = true
+        Store.write("meta", meta)
+        try await startSync(code: link.code, relay: link.relay)
     }
 
     /** Starts a new household with a fresh code, or joins one with [code]. Throws a readable error. */

@@ -19,6 +19,7 @@ enum Page: String, CaseIterable, Identifiable {
 struct RootView: View {
     @Environment(AppModel.self) private var app
     @State private var section: Page? = .home
+    @State private var linkError: String?
 
     var body: some View {
         @Bindable var app = app
@@ -39,7 +40,12 @@ struct RootView: View {
                         }
                     }
                 } detail: {
-                    NavigationStack { page(section ?? .home) }
+                    NavigationStack {
+                        // One dark-slate background on every page, as on the Mac and Fire TV.
+                        page(section ?? .home)
+                            .scrollContentBackground(.hidden)
+                            .background(Theme.background.ignoresSafeArea())
+                    }
                         .id(section)
                 }
             }
@@ -48,6 +54,21 @@ struct RootView: View {
         .fullScreenCover(item: $app.player) { request in
             PlayerView(request: request).environment(app)
         }
+        .alert("Link this iPad for sync?", isPresented: Binding(get: { app.pendingLink != nil && app.provider != nil }, set: { if !$0 { app.pendingLink = nil } })) {
+            Button("Link") {
+                Task {
+                    do { try await app.confirmPendingLink() } catch { linkError = error.localizedDescription }
+                }
+            }
+            Button("Cancel", role: .cancel) { app.pendingLink = nil }
+        } message: {
+            Text(app.sync == nil
+                 ? "Your progress, Continue watching and My List will be shared with the device that showed this code, end-to-end encrypted."
+                 : "This replaces the devices this iPad syncs with now.")
+        }
+        .alert("Couldn't link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(linkError ?? "") }
     }
 
     /** Films and Series only for Xtream providers; M3U playlists are live channels only. */

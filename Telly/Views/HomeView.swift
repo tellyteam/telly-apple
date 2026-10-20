@@ -60,6 +60,8 @@ struct HomeView: View {
         }
         .refreshable { await app.refresh() }
         .navigationTitle("Home")
+        .ignoresSafeArea(edges: .top)
+        .background(Theme.background.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .detailDestinations()
     }
@@ -74,8 +76,10 @@ private struct Hero: View {
         let item = entry.current
         let p = entry.live ? nil : app.progressOf(item.url)
         ZStack(alignment: .bottomLeading) {
-            Artwork(url: entry.art ?? item.logo, title: "")
-                .frame(height: 300)
+            // Runs up under the status bar, so the top of the screen matches the rest of Home.
+            (entry.art ?? item.logo).map { Artwork(url: $0, title: "") }
+                .frame(maxWidth: .infinity).frame(height: 340)
+                .background(LinearGradient(colors: [Theme.accent.opacity(0.18), Theme.background], startPoint: .topTrailing, endPoint: .bottomLeading))
                 .overlay(LinearGradient(colors: [.clear, Theme.background], startPoint: .top, endPoint: .bottom))
                 .overlay(LinearGradient(colors: [Theme.background.opacity(0.9), .clear], startPoint: .leading, endPoint: .trailing))
             VStack(alignment: .leading, spacing: 8) {
