@@ -73,8 +73,8 @@ struct SyncParcel: Equatable {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /** Whole milliseconds as integers, as the other apps write them. */
-    private func num(_ d: Double) -> Any { d.isFinite && d == d.rounded() && abs(d) < 9e15 ? Int64(d) as Any : d as Any }
+    /** Whole milliseconds as integers, as the other apps write and expect them. */
+    private func num(_ d: Double) -> Any { d.isFinite && abs(d) < 9e15 ? Int64(d.rounded()) as Any : 0 as Any }
 
     /** Whatever another device sent, reduced to well-formed entries; nil if it isn't a parcel. */
     static func parse(_ text: String) -> SyncParcel? {

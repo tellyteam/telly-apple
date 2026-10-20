@@ -34,7 +34,8 @@ struct SyncConfig: Codable, Equatable {
 enum FavKind: String { case live, film, series }
 func favKey(_ kind: FavKind, _ id: String) -> String { "\(kind.rawValue):\(id)" }
 
-private func nowMs() -> Double { Date().timeIntervalSince1970 * 1000 }
+/** Whole milliseconds: the sync format, and the other apps, use integers. */
+private func nowMs() -> Double { (Date().timeIntervalSince1970 * 1000).rounded() }
 
 /** The whole app's state: provider, lists, progress, history, My List and sync. Mirrors the Mac app. */
 @MainActor

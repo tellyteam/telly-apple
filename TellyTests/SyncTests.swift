@@ -58,6 +58,9 @@ final class SyncParcelTests: XCTestCase {
                            list: ["film:5": .init(at: 4, on: false)], cleared: 2)
         XCTAssertEqual(SyncParcel.parse(p.json()), p)
         XCTAssertTrue(p.json().contains(#""at":9"#), "times are written as integers, like the other apps")
+        // Fractions would be dropped by the Fire TV app: always whole milliseconds.
+        let fractional = SyncParcel(at: 1.6, progress: ["series/1.mkv": Progress(position: 5.4, duration: 10, at: 3.5)])
+        XCTAssertEqual(SyncParcel.parse(fractional.json())?.progress["series/1.mkv"], Progress(position: 5, duration: 10, at: 4))
     }
 
     func testReadsWhatTheOtherAppsWrite() throws {
