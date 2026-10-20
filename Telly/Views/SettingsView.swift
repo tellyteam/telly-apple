@@ -87,7 +87,7 @@ private struct SyncSection: View {
     @State private var code = ""
     @State private var relay = AppModel.defaultRelay
     @State private var linking = false
-    @State private var showCode = false
+    @State private var showCode = true
     @State private var error: String?
     @State private var confirmStop = false
     @State private var scanning = false
@@ -145,7 +145,7 @@ private struct SyncSection: View {
             }
         }
         .confirmationDialog("Stop syncing on this iPad?", isPresented: $confirmStop, titleVisibility: .visible) {
-            Button("Stop syncing", role: .destructive) { Task { await app.stopSync(); showCode = false } }
+            Button("Stop syncing", role: .destructive) { Task { await app.stopSync(); showCode = true } }
         } message: { Text("Your other devices keep syncing with each other.") }
     }
 
@@ -157,7 +157,7 @@ private struct SyncSection: View {
                 try await app.startSync(code: withCode, relay: relay)
                 joining = false
                 code = ""
-                showCode = withCode == nil
+                showCode = true
             } catch {
                 self.error = error.localizedDescription
             }

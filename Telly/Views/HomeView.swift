@@ -62,7 +62,8 @@ struct HomeView: View {
         .navigationTitle("Home")
         .ignoresSafeArea(edges: .top)
         .background(Theme.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
+        // A see-through bar rather than none, so the sidebar button stays.
+        .toolbarBackground(.hidden, for: .navigationBar)
         .detailDestinations()
     }
 }
@@ -79,6 +80,7 @@ private struct Hero: View {
             // Runs up under the status bar, so the top of the screen matches the rest of Home.
             (entry.art ?? item.logo).map { Artwork(url: $0, title: "") }
                 .frame(maxWidth: .infinity).frame(height: 340)
+                .clipped()
                 .background(LinearGradient(colors: [Theme.accent.opacity(0.18), Theme.background], startPoint: .topTrailing, endPoint: .bottomLeading))
                 .overlay(LinearGradient(colors: [.clear, Theme.background], startPoint: .top, endPoint: .bottom))
                 .overlay(LinearGradient(colors: [Theme.background.opacity(0.9), .clear], startPoint: .leading, endPoint: .trailing))
