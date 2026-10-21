@@ -1,9 +1,19 @@
 import SwiftUI
 
+private enum ProviderSheet: Identifiable {
+    case add, edit(String)
+    var id: String {
+        switch self {
+        case .add: return "add"
+        case let .edit(id): return id
+        }
+    }
+}
+
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
-    @State private var editing = false
-    @State private var confirmSignOut = false
+    @State private var sheet: ProviderSheet?
+    @State private var confirmRemove = false
     @State private var confirmClearProgress = false
     @State private var clearing = false
     @State private var versionTaps = 0
@@ -13,17 +23,38 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var app = app
         Form {
-            if let p = app.provider {
-                SwiftUI.Section("Your provider") {
-                    LabeledContent(p.name, value: p.isXtream ? "Xtream Codes" : "M3U playlist")
+            SwiftUI.Section {
+                ForEach(app.providers) { saved in
+                    Button { Task { await app.switchProvider(saved.id) } } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(saved.provider.name)
+                                Text(saved.provider.isXtream ? "Xtream Codes" : "M3U playlist").font(.caption).foregroundStyle(Theme.muted)
+                            }
+                            Spacer()
+                            if saved.id == app.activeId { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(saved.id == app.activeId)
+                }
+                Button("Add provider") { sheet = .add }
+            } header: {
+                Text("Providers")
+            } footer: {
+                Text("Each provider keeps its own lists, My List and progress. Switch between them here or at the bottom of the sidebar.")
+            }
+            if let p = app.provider, let id = app.activeId {
+                SwiftUI.Section(p.name) {
                     Toggle(isOn: Binding(get: { p.allowCleartext }, set: { app.setAllowCleartext($0) })) {
                         VStack(alignment: .leading) {
                             Text("Allow plain HTTP for this provider")
                             Text("Only if it has no HTTPS. Traffic to it won't be encrypted.").font(.caption).foregroundStyle(Theme.muted)
                         }
                     }
-                    Button("Edit provider") { editing = true }
-                    Button("Sign out", role: .destructive) { confirmSignOut = true }
+                    Button("Edit provider") { sheet = .edit(id) }
+                    Button("Remove provider", role: .destructive) { confirmRemove = true }
                 }
             }
             SwiftUI.Section("Playback") {
@@ -62,10 +93,15 @@ struct SettingsView: View {
         // Rounded groups, as on iPad and in the Mac's System Settings (a Mac's default puts labels in a column).
         .formStyle(.grouped)
         .navigationTitle("Settings")
-        .sheet(isPresented: $editing) { SetupView(existing: app.provider).environment(app) }
-        .confirmationDialog("Sign out and forget your provider?", isPresented: $confirmSignOut, titleVisibility: .visible) {
-            Button("Sign out", role: .destructive) { app.signOut() }
-        } message: { Text("Your login and saved lists are removed from this \(Device.name). My List and progress are kept.") }
+        .sheet(item: $sheet) { s in
+            switch s {
+            case .add: SetupView(inSheet: true).environment(app)
+            case let .edit(id): SetupView(existing: app.providers.first { $0.id == id }, inSheet: true).environment(app)
+            }
+        }
+        .confirmationDialog("Remove \(app.provider?.name ?? "this provider")?", isPresented: $confirmRemove, titleVisibility: .visible) {
+            Button("Remove", role: .destructive) { if let id = app.activeId { Task { await app.removeProvider(id) } } }
+        } message: { Text("Its login, lists, My List and progress are removed from this \(Device.name). Linked devices keep theirs.") }
         .confirmationDialog("Clear watch progress?", isPresented: $confirmClearProgress, titleVisibility: .visible) {
             Button("Clear it all", role: .destructive) { app.clearProgress() }
         } message: { Text("Forgets where you got to in every film and episode, and empties Continue watching. My List is kept.") }

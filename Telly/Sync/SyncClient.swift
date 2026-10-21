@@ -5,7 +5,7 @@ struct SyncError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-/** Talking to the relay. Only sealed parcels ever leave the iPad. */
+/** Talking to the relay. Only sealed parcels ever leave the device. */
 enum SyncClient {
     private static let session: URLSession = {
         let c = URLSessionConfiguration.ephemeral
@@ -42,8 +42,9 @@ enum SyncClient {
         return s
     }
 
-    /** Every other device's parcel that opens with our key; anything else is ignored. */
-    static func pull(_ relay: String, _ keys: SyncCrypto.Keys, device: String) async throws -> [SyncParcel] {
+    /** Every other device's parcel that opens with our key; anything else is ignored. A version 1
+     *  parcel is read as belonging to [current], the active provider's tag. */
+    static func pull(_ relay: String, _ keys: SyncCrypto.Keys, device: String, current: String) async throws -> [SyncBundle] {
         guard let url = URL(string: "\(base(relay))/v1/\(keys.mailbox)") else { throw SyncError(message: "The relay address isn't right.") }
         let data = try await send("GET", url, keys)
         let parcels = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["parcels"] as? [[String: Any]] ?? []
@@ -51,24 +52,24 @@ enum SyncClient {
             guard let from = p["device"] as? String, from != device,
                   let b64 = p["body"] as? String, let box = Data(base64Encoded: b64),
                   let text = SyncCrypto.open(keys, device: from, box) else { return nil }
-            return SyncParcel.parse(text)
+            return SyncBundle.parse(text, current: current)
         }
     }
 
-    static func push(_ relay: String, _ keys: SyncCrypto.Keys, device: String, _ parcel: SyncParcel) async throws {
+    static func push(_ relay: String, _ keys: SyncCrypto.Keys, device: String, _ bundle: SyncBundle) async throws {
         guard let url = URL(string: "\(base(relay))/v1/\(keys.mailbox)/\(device)") else { throw SyncError(message: "The relay address isn't right.") }
-        let body = try SyncCrypto.seal(keys, device: device, SyncParcel.trim(parcel, now: parcel.at).json())
+        let body = try SyncCrypto.seal(keys, device: device, bundle.json())
         _ = try await send("PUT", url, keys, body: body)
     }
 
-    /** Takes this iPad's parcel off the relay (the others keep theirs). */
+    /** Takes this device's parcel off the relay (the others keep theirs). */
     static func leave(_ relay: String, _ keys: SyncCrypto.Keys, device: String) async throws {
         guard let url = URL(string: "\(base(relay))/v1/\(keys.mailbox)/\(device)") else { return }
         _ = try await send("DELETE", url, keys)
     }
 
-    static func syncOnce(_ relay: String, _ keys: SyncCrypto.Keys, device: String, own: SyncParcel, now: Double) async throws -> SyncParcel {
-        let merged = SyncParcel.merge(own, try await pull(relay, keys, device: device), now: now)
+    static func syncOnce(_ relay: String, _ keys: SyncCrypto.Keys, device: String, own: SyncBundle, current: String, now: Double) async throws -> SyncBundle {
+        let merged = SyncBundle.merge(own, try await pull(relay, keys, device: device, current: current), now: now)
         try await push(relay, keys, device: device, merged)
         return merged
     }

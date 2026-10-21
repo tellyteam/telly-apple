@@ -26,7 +26,7 @@ struct RootView: View {
             if !app.ready {
                 Wordmark(height: 62).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if app.provider == nil {
-                SetupView(existing: nil)
+                SetupView()
             } else {
                 NavigationSplitView {
                     List(selection: $app.page) {
@@ -40,9 +40,14 @@ struct RootView: View {
                     }
                     .inlineTitle()
                     .safeAreaInset(edge: .bottom) {
-                        if app.refreshing {
-                            Label("Updating your lists…", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(Theme.muted).padding()
+                        VStack(alignment: .leading, spacing: 8) {
+                            if app.refreshing {
+                                Label("Updating your lists…", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(Theme.muted)
+                            }
+                            if app.providers.count > 1 { providerSwitcher }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
                     }
                 } detail: {
                     NavigationStack {
@@ -84,6 +89,25 @@ struct RootView: View {
         .alert("Couldn't link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(linkError ?? "") }
+    }
+
+    /** Which provider is in use, and a quick switch to another. */
+    private var providerSwitcher: some View {
+        Menu {
+            ForEach(app.providers) { saved in
+                Button { Task { await app.switchProvider(saved.id) } } label: {
+                    if saved.id == app.activeId { Label(saved.provider.name, systemImage: "checkmark") } else { Text(saved.provider.name) }
+                }
+            }
+            Divider()
+            Button("Manage providers…") { app.page = .settings }
+        } label: {
+            Label(app.provider?.name ?? "Provider", systemImage: "antenna.radiowaves.left.and.right")
+                .lineLimit(1)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .disabled(app.player != nil)
     }
 
     /** Films and Series only for Xtream providers; M3U playlists are live channels only. */

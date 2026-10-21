@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import Security
 
-/** Keys and sealing for sync, exactly as telly-sync's PROTOCOL.md (version 1) describes. */
+/** Keys and sealing for sync, exactly as telly-sync's PROTOCOL.md (version 2) describes. */
 enum SyncCrypto {
     private static let alphabet = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
     private static let salt = Data("telly-sync v1".utf8)
@@ -12,6 +12,8 @@ enum SyncCrypto {
         let mailbox: String
         let key: SymmetricKey
         let auth: String
+        /** Keys provider tags (see [providerTag]). */
+        let provider: SymmetricKey
     }
 
     static func randomBytes(_ n: Int) -> [UInt8] {
@@ -61,7 +63,13 @@ enum SyncCrypto {
         }
         let auth = derive("auth").base64EncodedString()
             .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-        return Keys(mailbox: hex(derive("mailbox").prefix(16)), key: SymmetricKey(data: derive("key")), auth: auth)
+        return Keys(mailbox: hex(derive("mailbox").prefix(16)), key: SymmetricKey(data: derive("key")), auth: auth,
+                    provider: SymmetricKey(data: derive("provider")))
+    }
+
+    /** A provider's tag: meaningless without the link code; with it, only "same provider or not". */
+    static func providerTag(_ keys: Keys, identity: String) -> String {
+        hex(HMAC<SHA256>.authenticationCode(for: Data(identity.utf8), using: keys.provider).prefix(8))
     }
 
     private static func aad(_ keys: Keys, _ device: String) -> Data { Data("telly-sync v1|\(keys.mailbox)|\(device)".utf8) }

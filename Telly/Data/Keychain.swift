@@ -54,3 +54,42 @@ enum Store {
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(name).json"))
     }
 }
+
+/**
+ * One provider's own records on this device: My List, progress, history and the sync ledger, in
+ * files named after its [SavedProvider.id]. (Before there could be several providers, they had
+ * no suffix.)
+ */
+enum Records {
+    struct Set {
+        var favourites: [String] = []
+        var progress: [String: Progress] = [:]
+        var history: [LastWatched] = []
+        var ledger = SyncLedger()
+    }
+
+    static func name(_ base: String, _ id: String?) -> String { id.map { "\(base)-\($0)" } ?? base }
+
+    static func load(_ id: String?) -> Set {
+        Set(favourites: Store.read(name("favourites", id), as: [String].self) ?? [],
+            progress: Store.read(name("progress", id), as: [String: Progress].self) ?? [:],
+            history: Store.read(name("history", id), as: [LastWatched].self) ?? [],
+            ledger: Store.read(name("sync-ledger", id), as: SyncLedger.self) ?? SyncLedger())
+    }
+
+    static func save(_ id: String, _ r: Set) {
+        Store.write(name("favourites", id), r.favourites)
+        Store.write(name("progress", id), r.progress)
+        Store.write(name("history", id), r.history)
+        Store.write(name("sync-ledger", id), r.ledger)
+    }
+
+    static func move(from: String?, to: String) {
+        save(to, load(from))
+        delete(from)
+    }
+
+    static func delete(_ id: String?) {
+        for base in ["favourites", "progress", "history", "sync-ledger"] { Store.delete(name(base, id)) }
+    }
+}

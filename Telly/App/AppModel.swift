@@ -22,6 +22,14 @@ struct Meta: Codable, Equatable {
     var updatedAt: Double?
     /** Sync is hidden until unlocked (seven taps on the version in Settings). */
     var syncUnlocked: Bool?
+    /** The saved provider in use ([SavedProvider.id]). */
+    var activeProvider: String?
+}
+
+/** A provider the user has added. [id] is local: it files the provider's own records on this device. */
+struct SavedProvider: Codable, Identifiable, Equatable {
+    var id: String
+    var provider: Provider
 }
 
 struct PendingLink: Identifiable, Equatable {
@@ -52,7 +60,11 @@ final class AppModel {
     private static let syncGapMs: Double = 60_000
 
     var ready = false
+    /** Every provider added on this device; [provider] is the one in use. */
+    var providers: [SavedProvider] = []
     var provider: Provider?
+    /** The [SavedProvider.id] of [provider]. */
+    var activeId: String?
     var live: [ItemGroup<Channel>]?
     var films: [ItemGroup<Channel>]?
     var series: [ItemGroup<Series>]?
@@ -87,20 +99,61 @@ final class AppModel {
     // MARK: Start-up
 
     func start() async {
-        favourites = Store.read("favourites", as: [String].self) ?? []
-        progress = Store.read("progress", as: [String: Progress].self) ?? [:]
-        history = Store.read("history", as: [LastWatched].self) ?? []
         settings = Store.read("settings", as: Settings.self) ?? Settings()
         meta = Store.read("meta", as: Meta.self) ?? Meta()
-        ledger = Store.read("sync-ledger", as: SyncLedger.self) ?? SyncLedger()
         sync = Keychain.get("sync").flatMap { try? JSONDecoder().decode(SyncConfig.self, from: Data($0.utf8)) }
             .flatMap { SyncCrypto.normaliseCode($0.code) != nil && $0.relay.hasPrefix("https://") ? $0 : nil }
-        guard let p = Keychain.get("provider").flatMap({ try? JSONDecoder().decode(Provider.self, from: Data($0.utf8)) }) else {
+        providers = loadProviders()
+        guard let active = providers.first(where: { $0.id == meta.activeProvider }) ?? providers.first else {
             ready = true
             return
         }
-        await use(p)
+        await activate(active)
         ready = true
+    }
+
+    // MARK: Saved providers
+
+    private static func newProviderId() -> String { SyncCrypto.hex(SyncCrypto.randomBytes(6)) }
+
+    /** The saved providers. Before there could be several, the one provider and its records were
+     *  kept unscoped: they become the first saved provider's. */
+    private func loadProviders() -> [SavedProvider] {
+        if let text = Keychain.get("providers"), let list = try? JSONDecoder().decode([SavedProvider].self, from: Data(text.utf8)) {
+            return list
+        }
+        guard let old = Keychain.get("provider").flatMap({ try? JSONDecoder().decode(Provider.self, from: Data($0.utf8)) }) else { return [] }
+        let saved = SavedProvider(id: Self.newProviderId(), provider: old)
+        Records.move(from: nil, to: saved.id)
+        saveProviders([saved])
+        Keychain.delete("provider")
+        meta.activeProvider = saved.id
+        Store.write("meta", meta)
+        return [saved]
+    }
+
+    private func saveProviders(_ list: [SavedProvider]) {
+        providers = list
+        Keychain.set("providers", String(decoding: (try? JSONEncoder().encode(list)) ?? Data("[]".utf8), as: UTF8.self))
+    }
+
+    /** Makes [saved] the provider in use: its records, then its lists (saved ones straight away). */
+    private func activate(_ saved: SavedProvider) async {
+        let r = Records.load(saved.id)
+        (favourites, progress, history, ledger) = (r.favourites, r.progress, r.history, r.ledger)
+        activeId = saved.id
+        meta.activeProvider = saved.id
+        Store.write("meta", meta)
+        live = nil; films = nil; series = nil
+        setCatalogues(nil, nil, nil)
+        await use(saved.provider)
+    }
+
+    /** Switches to another saved provider. Not while something plays. */
+    func switchProvider(_ id: String) async {
+        guard id != activeId, player == nil, let saved = providers.first(where: { $0.id == id }) else { return }
+        page = .home
+        await activate(saved)
     }
 
     /** Shows the saved lists straight away, then refreshes them in the background. */
@@ -156,27 +209,65 @@ final class AppModel {
 
     // MARK: Provider
 
-    func saveProvider(_ p: Provider) async throws {
+    /** Checks [p] with the provider, then saves it: in place of [editing], or as a new provider
+     *  that becomes the one in use. Throws a readable error. */
+    func saveProvider(_ p: Provider, editing: String? = nil) async throws {
+        if providers.contains(where: { $0.id != editing && $0.provider.syncIdentity == p.syncIdentity }) {
+            throw ProviderError("You've already added this provider.")
+        }
         HTTP.shared.allowCleartext = p.allowCleartext
-        try await Repo.verify(p)
-        Keychain.set("provider", String(decoding: try JSONEncoder().encode(p), as: UTF8.self))
-        live = nil; films = nil; series = nil
-        await use(p)
+        do {
+            try await Repo.verify(p)
+        } catch {
+            if let current = provider { HTTP.shared.allowCleartext = current.allowCleartext }
+            throw error
+        }
+        var list = providers
+        let saved: SavedProvider
+        if let editing, let i = list.firstIndex(where: { $0.id == editing }) {
+            list[i].provider = p
+            saved = list[i]
+        } else {
+            saved = SavedProvider(id: Self.newProviderId(), provider: p)
+            list.append(saved)
+        }
+        saveProviders(list)
+        if saved.id == activeId {
+            live = nil; films = nil; series = nil
+            await use(p)
+        } else {
+            page = .home
+            await activate(saved)
+        }
     }
 
-    func signOut() {
-        Keychain.delete("provider")
-        // History holds stream URLs, which carry the login.
-        history = []
-        Store.delete("history")
-        CatalogCache.clearAll()
-        provider = nil
-        live = nil; films = nil; series = nil
+    /** Removes a provider from this device, with its lists and everything watched with it. */
+    func removeProvider(_ id: String) async {
+        guard let gone = providers.first(where: { $0.id == id }), player == nil else { return }
+        saveProviders(providers.filter { $0.id != id })
+        // Its history holds stream URLs, which carry the login.
+        Records.delete(id)
+        CatalogCache.clear(for: gone.provider)
+        guard id == activeId else { return }
+        if let next = providers.first {
+            page = .home
+            await activate(next)
+        } else {
+            (favourites, progress, history, ledger) = ([], [:], [], SyncLedger())
+            activeId = nil
+            meta.activeProvider = nil
+            Store.write("meta", meta)
+            provider = nil
+            live = nil; films = nil; series = nil
+        }
     }
 
     func setAllowCleartext(_ allow: Bool) {
-        guard let p = provider?.with(allowCleartext: allow) else { return }
-        Keychain.set("provider", String(decoding: (try? JSONEncoder().encode(p)) ?? Data(), as: UTF8.self))
+        guard let p = provider?.with(allowCleartext: allow), let id = activeId,
+              let i = providers.firstIndex(where: { $0.id == id }) else { return }
+        var list = providers
+        list[i].provider = p
+        saveProviders(list)
         provider = p
         HTTP.shared.allowCleartext = allow
     }
@@ -242,9 +333,9 @@ final class AppModel {
         let key = favKey(kind, id)
         let on = !favourites.contains(key)
         favourites = on ? [key] + favourites : favourites.filter { $0 != key }
-        Store.write("favourites", favourites)
+        keep("favourites", favourites)
         ledger.list[key] = .init(at: nowMs(), on: on)
-        Store.write("sync-ledger", ledger)
+        keep("sync-ledger", ledger)
         syncSoon()
     }
 
@@ -270,7 +361,7 @@ final class AppModel {
     func saveProgress(_ url: String, position: Double, duration: Double) {
         guard duration > 0, duration.isFinite else { return }
         progress[Playback.progressKey(url)] = Progress(position: min(max(position, 0), duration).rounded(), duration: duration.rounded(), at: nowMs())
-        Store.write("progress", progress)
+        keep("progress", progress)
     }
 
     /** Continue watching: history without films that have been watched to the end. */
@@ -289,7 +380,7 @@ final class AppModel {
     func recordWatching(_ req: PlayRequest, index: Int) {
         history = history.remembering(LastWatched(heading: req.heading, live: req.live, index: index, items: req.items,
                                                   seriesId: req.seriesId, art: req.art, at: nowMs()))
-        Store.write("history", history)
+        keep("history", history)
     }
 
     /** Plays a history entry: the next episode if the last one reached its credits. */
@@ -299,9 +390,9 @@ final class AppModel {
 
     func removeFromHistory(_ h: LastWatched) {
         history.removeAll { $0.slot == h.slot }
-        Store.write("history", history)
+        keep("history", history)
         ledger.removed[h.slot] = nowMs()
-        Store.write("sync-ledger", ledger)
+        keep("sync-ledger", ledger)
         syncSoon()
     }
 
@@ -311,9 +402,9 @@ final class AppModel {
         history = []
         ledger.removed = [:]
         ledger.cleared = nowMs()
-        Store.write("progress", progress)
-        Store.write("history", history)
-        Store.write("sync-ledger", ledger)
+        keep("progress", progress)
+        keep("history", history)
+        keep("sync-ledger", ledger)
         Task { await syncNow(force: true) }
     }
 
@@ -324,6 +415,12 @@ final class AppModel {
     }
 
     func saveSettings() { Store.write("settings", settings) }
+
+    /** Saves one of the active provider's records. */
+    private func keep<T: Encodable>(_ base: String, _ value: T) {
+        guard let id = activeId else { return }
+        Store.write(Records.name(base, id), value)
+    }
 
     // MARK: Plays
 
@@ -412,37 +509,53 @@ final class AppModel {
         Task { await syncNow() }
     }
 
-    /** Fetches the other devices' changes, takes in what's newer and shares the result. Never during playback. */
+    /**
+     * Fetches the other devices' changes, takes in what's newer and shares the result: a section for
+     * each saved provider, matched to other devices' by provider tag. The provider in use takes in
+     * everything; the others take in progress, My List and removals now, and Continue watching
+     * when they're next in use (resolving it needs their lists). Never during playback.
+     */
     func syncNow(force: Bool = false) async {
-        guard let config = sync, !syncBusy, player == nil else { return }
+        guard let config = sync, !syncBusy, player == nil, let activeId else { return }
         if !force, let at = syncedAt, nowMs() - at < Self.syncGapMs { return }
         syncBusy = true
         syncError = nil
         defer { syncBusy = false }
         do {
             let now = nowMs()
-            let local = SyncLocal.Local(progress: progress, history: history, favourites: favourites, ledger: ledger)
-            let merged = try await SyncClient.syncOnce(config.relay, SyncCrypto.deriveKeys(config.code), device: config.device,
-                                                       own: SyncLocal.toParcel(local, now: now), now: now)
+            let keys = SyncCrypto.deriveKeys(config.code)
+            var locals: [String: (id: String, local: SyncLocal.Local)] = [:]
+            for saved in providers {
+                let tag = SyncCrypto.providerTag(keys, identity: saved.provider.syncIdentity)
+                let r = saved.id == activeId ? Records.Set(favourites: favourites, progress: progress, history: history, ledger: ledger)
+                                             : Records.load(saved.id)
+                locals[tag] = (saved.id, SyncLocal.Local(progress: r.progress, history: r.history, favourites: r.favourites, ledger: r.ledger))
+            }
+            guard let current = locals.first(where: { $0.value.id == activeId })?.key else { return }
+            let own = SyncBundle(at: now, sections: locals.mapValues { SyncLocal.toParcel($0.local, now: now) })
+            let merged = try await SyncClient.syncOnce(config.relay, keys, device: config.device, own: own, current: current, now: now)
             guard sync == config else { return }
-            let next = await SyncLocal.apply(local, merged) { await self.resolve($0) }
-            // Playback may have started meanwhile; its own saves win.
-            guard player == nil else { return }
-            progress = next.progress
-            history = next.history
-            favourites = next.favourites
-            ledger = next.ledger
-            Store.write("progress", progress)
-            Store.write("history", history)
-            Store.write("favourites", favourites)
-            Store.write("sync-ledger", ledger)
+            for (tag, entry) in locals {
+                guard let section = merged.sections[tag] else { continue }
+                let isActive = entry.id == activeId
+                let next = await SyncLocal.apply(entry.local, section) { isActive ? await self.resolve($0) : nil }
+                let r = Records.Set(favourites: next.favourites, progress: next.progress, history: next.history, ledger: next.ledger)
+                if !isActive {
+                    if providers.contains(where: { $0.id == entry.id }) { Records.save(entry.id, r) }
+                    continue
+                }
+                // Playback (or a switch of provider) may have started meanwhile; its own saves win.
+                guard player == nil, entry.id == self.activeId else { continue }
+                (progress, history, favourites, ledger) = (r.progress, r.history, r.favourites, r.ledger)
+                Records.save(entry.id, r)
+            }
             syncedAt = nowMs()
         } catch {
             syncError = (error as? SyncError)?.message ?? "Couldn't reach the sync relay."
         }
     }
 
-    /** A shared history entry as one this iPad can play, from its own lists and login. */
+    /** A shared history entry as one this device can play, from its own lists and login. */
     private func resolve(_ e: SyncEntry) async -> LastWatched? {
         switch e.kind {
         case .film:

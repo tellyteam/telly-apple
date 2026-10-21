@@ -160,4 +160,53 @@ final class SyncLinkTests: XCTestCase {
     func testDrawsAQRCode() {
         XCTAssertNotNil(SyncLink.image("telly://sync?code=ABCDEFGHJKMNPQRS"))
     }
+
+    // MARK: Version 2: providers
+
+    func testProviderTagsMatchTheSharedVector() {
+        let keys = SyncCrypto.deriveKeys("0123456789ABCDEF")
+        XCTAssertEqual(Provider.normaliseServer(" Example.com:8080/ "), "http://example.com:8080")
+        XCTAssertEqual(Provider.normaliseServer("https://tv.example:443/"), "https://tv.example")
+        XCTAssertEqual(Provider.normaliseServer("HTTP://tv.example:80"), "http://tv.example")
+        let xtream = Provider.xtream(name: "A", server: " Example.com:8080/ ", username: "me", password: "secret", allowCleartext: true)
+        let m3u = Provider.m3u(name: "B", url: " https://example.com/list.m3u ", allowCleartext: false)
+        XCTAssertEqual(SyncCrypto.providerTag(keys, identity: xtream.syncIdentity), "7a6c86b8dde4ea72")
+        XCTAssertEqual(SyncCrypto.providerTag(keys, identity: m3u.syncIdentity), "ff2163ea5d23fc01")
+        // Never the password, and different codes give unrelated tags.
+        XCTAssertFalse(xtream.syncIdentity.contains("secret"))
+        XCTAssertNotEqual(SyncCrypto.providerTag(SyncCrypto.deriveKeys("1123456789ABCDEF"), identity: xtream.syncIdentity), "7a6c86b8dde4ea72")
+    }
+
+    func testVersion2KeepsEachProviderApart() throws {
+        var a = SyncParcel(at: 10)
+        a.progress["movie/1.mkv"] = Progress(position: 5, duration: 10, at: 10)
+        var b = SyncParcel(at: 10)
+        b.progress["movie/1.mkv"] = Progress(position: 7, duration: 10, at: 20)
+        let bundle = SyncBundle(at: 30, sections: ["aaaaaaaaaaaaaaaa": a, "bbbbbbbbbbbbbbbb": b])
+        let back = try XCTUnwrap(SyncBundle.parse(bundle.json(), current: "cccccccccccccccc"))
+        XCTAssertEqual(back.sections["aaaaaaaaaaaaaaaa"]?.progress["movie/1.mkv"]?.position, 5)
+        XCTAssertEqual(back.sections["bbbbbbbbbbbbbbbb"]?.progress["movie/1.mkv"]?.position, 7)
+        XCTAssertNil(back.sections["cccccccccccccccc"])
+        // Anything that isn't a tag is dropped.
+        XCTAssertEqual(SyncBundle.parse(#"{"v":2,"at":1,"providers":{"http://x":{"progress":{}}}}"#, current: "aaaaaaaaaaaaaaaa")?.sections.count, 0)
+    }
+
+    func testReadsVersion1AsTheCurrentProvider() throws {
+        let v1 = #"{"v":1,"at":5,"progress":{"movie/9.mp4":[1,2,5]},"history":[],"list":{},"cleared":0}"#
+        let b = try XCTUnwrap(SyncBundle.parse(v1, current: "dddddddddddddddd"))
+        XCTAssertEqual(Array(b.sections.keys), ["dddddddddddddddd"])
+        XCTAssertEqual(b.sections["dddddddddddddddd"]?.progress["movie/9.mp4"]?.position, 1)
+        XCTAssertNil(SyncBundle.parse(#"{"v":3}"#, current: "dddddddddddddddd"))
+    }
+
+    func testMergesOnlyTheProvidersThisDeviceHas() {
+        var mine = SyncParcel(at: 1)
+        mine.progress["movie/1.mkv"] = Progress(position: 1, duration: 10, at: 1)
+        var theirs = SyncParcel(at: 2)
+        theirs.progress["movie/1.mkv"] = Progress(position: 6, duration: 10, at: 2)
+        let other = SyncBundle(at: 2, sections: ["aaaaaaaaaaaaaaaa": theirs, "eeeeeeeeeeeeeeee": theirs])
+        let m = SyncBundle.merge(SyncBundle(at: 1, sections: ["aaaaaaaaaaaaaaaa": mine]), [other], now: 3)
+        XCTAssertEqual(Array(m.sections.keys), ["aaaaaaaaaaaaaaaa"])
+        XCTAssertEqual(m.sections["aaaaaaaaaaaaaaaa"]?.progress["movie/1.mkv"]?.position, 6)
+    }
 }

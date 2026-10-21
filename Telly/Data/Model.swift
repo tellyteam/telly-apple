@@ -22,6 +22,31 @@ enum Provider: Codable, Equatable {
         return false
     }
 
+    /**
+     * Who this provider is, for its sync tag (telly-sync PROTOCOL.md, "Provider tag"): the kind,
+     * the normalised server and the username, or the playlist URL. Never sent anywhere as it is.
+     */
+    var syncIdentity: String {
+        switch self {
+        case let .xtream(_, server, username, _, _): return "xtream\n\(Provider.normaliseServer(server))\n\(username)"
+        case let .m3u(_, url, _): return "m3u\n\(url.trimmingCharacters(in: .whitespaces))"
+        }
+    }
+
+    /** ` Example.com:8080/ ` → `http://example.com:8080`, as the sync protocol defines it. */
+    static func normaliseServer(_ server: String) -> String {
+        var s = server.trimmingCharacters(in: .whitespaces).lowercased()
+        if !s.contains("://") { s = "http://" + s }
+        while s.hasSuffix("/") { s.removeLast() }
+        for (scheme, port) in [("http://", ":80"), ("https://", ":443")] where s.hasPrefix(scheme) {
+            let rest = s.dropFirst(scheme.count)
+            let host = rest.prefix { $0 != "/" }
+            if host.hasSuffix(port) { s = scheme + host.dropLast(port.count) + rest.dropFirst(host.count) }
+        }
+        while s.hasSuffix("/") { s.removeLast() }
+        return s
+    }
+
     func with(allowCleartext allow: Bool) -> Provider {
         switch self {
         case let .xtream(n, s, u, p, _): return .xtream(name: n, server: s, username: u, password: p, allowCleartext: allow)

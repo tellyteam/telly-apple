@@ -32,4 +32,17 @@ enum CatalogCache {
     static func clearAll() {
         try? FileManager.default.removeItem(at: dir)
     }
+
+    /** One provider's saved lists (as Repo scopes them). */
+    static func clear(for provider: Provider) {
+        let scope: String
+        switch provider {
+        case let .xtream(_, server, username, _, _):
+            guard let url = try? Xtream.serverURL(server) else { return }
+            scope = Self.scope("xtream", url.absoluteString, username)
+        case let .m3u(_, raw, _):
+            scope = Self.scope("m3u", raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent(scope, isDirectory: true))
+    }
 }

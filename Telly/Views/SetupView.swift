@@ -4,7 +4,10 @@ import SwiftUI
 struct SetupView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
-    let existing: Provider?
+    /** The provider being edited, if any. */
+    var existing: SavedProvider? = nil
+    /** In a sheet (adding another provider, or editing), rather than the first screen. */
+    var inSheet = false
 
     @State private var xtream = true
     @State private var name = ""
@@ -27,7 +30,7 @@ struct SetupView: View {
                     Text("M3U playlist").tag(false)
                 }
                 .pickerStyle(.segmented)
-                field("Name (optional)", $name, placeholder: defaultProviderName)
+                field("Name (optional)", $name, placeholder: "Leave blank to use the server's name")
                 if xtream {
                     field("Server address", $server, placeholder: "example.com:8080", url: true)
                     HStack(spacing: 12) {
@@ -50,7 +53,7 @@ struct SetupView: View {
                 HStack {
                     Button(connecting ? "Connecting…" : "Connect") { Task { await connect() } }
                         .buttonStyle(.borderedProminent).disabled(connecting || !complete)
-                    if existing != nil { Button("Cancel") { dismiss() }.buttonStyle(.bordered) }
+                    if inSheet { Button("Cancel") { dismiss() }.buttonStyle(.bordered) }
                 }
                 Text("Your login stays on this \(Device.name), in its Keychain. telly only talks to your provider.")
                     .font(.caption).foregroundStyle(Theme.faint)
@@ -58,8 +61,8 @@ struct SetupView: View {
             .padding(32)
             .frame(maxWidth: 560)
             // A card on the page when signing in; editing is already in a sheet, so no card in a card.
-            .background(existing == nil ? Theme.surface : .clear, in: RoundedRectangle(cornerRadius: 20))
-            .padding(.vertical, existing == nil ? 60 : 0)
+            .background(inSheet ? .clear : Theme.surface, in: RoundedRectangle(cornerRadius: 20))
+            .padding(.vertical, inSheet ? 0 : 60)
             .frame(maxWidth: .infinity)
         }
         .background(Theme.background)
@@ -80,7 +83,7 @@ struct SetupView: View {
     }
 
     private func fill() {
-        switch existing {
+        switch existing?.provider {
         case let .xtream(n, s, u, p, c)?: (xtream, name, server, username, password, allowCleartext) = (true, n, s, u, p, c)
         case let .m3u(n, u, c)?: (xtream, name, url, allowCleartext) = (false, n, u, c)
         case nil: break
@@ -91,12 +94,15 @@ struct SetupView: View {
     private func connect() async {
         connecting = true
         error = nil
-        let n = name.trimmingCharacters(in: .whitespaces).isEmpty ? defaultProviderName : name.trimmingCharacters(in: .whitespaces)
+        // Unnamed providers go by their server's name, so several can be told apart.
+        let address = (xtream ? server : url).trimmingCharacters(in: .whitespaces)
+        let host = URL(string: address.contains("://") ? address : "http://\(address)")?.host
+        let n = name.trimmingCharacters(in: .whitespaces).isEmpty ? (host ?? defaultProviderName) : name.trimmingCharacters(in: .whitespaces)
         let p: Provider = xtream
             ? .xtream(name: n, server: server.trimmingCharacters(in: .whitespaces), username: username.trimmingCharacters(in: .whitespaces), password: password, allowCleartext: allowCleartext)
             : .m3u(name: n, url: url.trimmingCharacters(in: .whitespaces), allowCleartext: allowCleartext)
         do {
-            try await app.saveProvider(p)
+            try await app.saveProvider(p, editing: existing?.id)
             dismiss()
         } catch {
             self.error = error.localizedDescription

@@ -20,7 +20,10 @@ struct SyncEntry: Hashable {
     }
 }
 
-/** What one device shares (telly-sync PROTOCOL.md): positions, history and My List, by id. */
+/**
+ * One provider's section of a parcel (telly-sync PROTOCOL.md): positions, history and My List, by
+ * the provider's own ids. Version 1 parcels were exactly one of these; see [SyncBundle].
+ */
 struct SyncParcel: Equatable {
     var at: Double = 0
     /** key → (position ms, duration ms, saved at). */
@@ -54,7 +57,20 @@ struct SyncParcel: Equatable {
 
     // MARK: JSON
 
+    /** Version 1's parcel, which is a section with `v` and `at` beside it. */
     func json() -> String {
+        var obj = sectionObject()
+        obj["v"] = 1
+        obj["at"] = num(at)
+        return Self.text(obj)
+    }
+
+    static func text(_ obj: [String: Any]) -> String {
+        let data = try! JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    func sectionObject() -> [String: Any] {
         var h: [[String: Any]] = []
         for e in history {
             var o: [String: Any] = ["kind": e.kind.rawValue, "id": e.id, "at": num(e.at)]
@@ -62,25 +78,27 @@ struct SyncParcel: Equatable {
             if e.removed { o["removed"] = true }
             h.append(o)
         }
-        let obj: [String: Any] = [
-            "v": 1, "at": num(at),
+        return [
             "progress": progress.mapValues { [num($0.position), num($0.duration), num($0.at)] },
             "history": h,
             "list": list.mapValues { [num($0.at), $0.on] as [Any] },
             "cleared": num(cleared),
         ]
-        let data = try! JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])
-        return String(decoding: data, as: UTF8.self)
     }
 
     /** Whole milliseconds as integers, as the other apps write and expect them. */
-    private func num(_ d: Double) -> Any { d.isFinite && abs(d) < 9e15 ? Int64(d.rounded()) as Any : 0 as Any }
+    func num(_ d: Double) -> Any { d.isFinite && abs(d) < 9e15 ? Int64(d.rounded()) as Any : 0 as Any }
 
-    /** Whatever another device sent, reduced to well-formed entries; nil if it isn't a parcel. */
+    /** A version 1 parcel, reduced to well-formed entries; nil if it isn't one. */
     static func parse(_ text: String) -> SyncParcel? {
         guard let raw = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any],
               time(raw["v"]) == 1 else { return nil }
-        var p = SyncParcel(at: time(raw["at"]) ?? 0, cleared: time(raw["cleared"]) ?? 0)
+        return parseSection(raw, at: time(raw["at"]) ?? 0)
+    }
+
+    /** A section another device sent, reduced to well-formed entries. */
+    static func parseSection(_ raw: [String: Any], at: Double) -> SyncParcel {
+        var p = SyncParcel(at: at, cleared: time(raw["cleared"]) ?? 0)
         for (k, v) in raw["progress"] as? [String: Any] ?? [:] {
             guard isSyncableKey(k), let a = v as? [Any], a.count == 3,
                   let pos = time(a[0]), let dur = time(a[1]), let at = time(a[2]), dur > 0 else { continue }
@@ -104,7 +122,7 @@ struct SyncParcel: Equatable {
         guard let n = v as? NSNumber else { return false }
         return CFGetTypeID(n) == CFBooleanGetTypeID()
     }
-    private static func time(_ v: Any?) -> Double? {
+    static func time(_ v: Any?) -> Double? {
         guard let n = v as? NSNumber, !isBool(n) else { return nil }
         let d = n.doubleValue
         return d.isFinite && d >= 0 ? d : nil
@@ -143,5 +161,54 @@ struct SyncParcel: Equatable {
             }
         }
         return trim(SyncParcel(at: now, progress: progress, history: order.compactMap { history[$0] }, list: list, cleared: cleared), now: now)
+    }
+}
+
+/**
+ * A whole parcel (version 2): a section for each provider the device has, under its provider tag.
+ * Reads version 1 parcels too, as one section for the reader's current provider.
+ */
+struct SyncBundle: Equatable {
+    var at: Double = 0
+    var sections: [String: SyncParcel] = [:]
+
+    static let maxSections = 20
+    private static let tagPattern = try! NSRegularExpression(pattern: "^[0-9a-f]{16}$")
+    static func isTag(_ t: String) -> Bool { tagPattern.firstMatch(in: t, range: NSRange(t.startIndex..., in: t)) != nil }
+
+    func json() -> String {
+        var providers: [String: Any] = [:]
+        for (tag, section) in sections.sorted(by: { $0.value.at > $1.value.at }).prefix(Self.maxSections) {
+            providers[tag] = SyncParcel.trim(section, now: at).sectionObject()
+        }
+        return SyncParcel.text(["v": 2, "at": SyncParcel().num(at), "providers": providers])
+    }
+
+    /** Another device's parcel; [current] is the tag a version 1 parcel is read as. */
+    static func parse(_ text: String, current: String) -> SyncBundle? {
+        guard let raw = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] else { return nil }
+        let at = SyncParcel.time(raw["at"]) ?? 0
+        switch SyncParcel.time(raw["v"]) {
+        case 1:
+            return SyncBundle(at: at, sections: [current: SyncParcel.parseSection(raw, at: at)])
+        case 2:
+            var b = SyncBundle(at: at)
+            for (tag, value) in raw["providers"] as? [String: Any] ?? [:] {
+                guard isTag(tag), let section = value as? [String: Any], b.sections.count < maxSections else { continue }
+                b.sections[tag] = SyncParcel.parseSection(section, at: at)
+            }
+            return b
+        default:
+            return nil
+        }
+    }
+
+    /** [own] combined with others, section by section, for the providers [own] has. */
+    static func merge(_ own: SyncBundle, _ others: [SyncBundle], now: Double) -> SyncBundle {
+        var out = SyncBundle(at: now)
+        for (tag, section) in own.sections {
+            out.sections[tag] = SyncParcel.merge(section, others.compactMap { $0.sections[tag] }, now: now)
+        }
+        return out
     }
 }
