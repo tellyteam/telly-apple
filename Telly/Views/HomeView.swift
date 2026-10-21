@@ -22,7 +22,8 @@ struct HomeView: View {
                     }
                 }
                 let mine = app.favouriteItems()
-                if !(mine.films.isEmpty && mine.series.isEmpty && mine.live.isEmpty) {
+                // Films and series in one row, channels in their own: each row's cards are one shape.
+                if !(mine.films.isEmpty && mine.series.isEmpty) {
                     Shelf(title: "My List") {
                         ForEach(mine.series) { s in
                             NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover) }.buttonStyle(.plain)
@@ -30,6 +31,10 @@ struct HomeView: View {
                         ForEach(mine.films) { f in
                             NavigationLink(value: FilmLink(film: f)) { PosterCard(title: f.name, image: f.logo) }.buttonStyle(.plain)
                         }
+                    }
+                }
+                if !mine.live.isEmpty {
+                    Shelf(title: "Favourite channels") {
                         ForEach(mine.live) { c in
                             Button { app.playChannel(c) } label: { ChannelTile(channel: c) }.buttonStyle(.plain)
                         }
