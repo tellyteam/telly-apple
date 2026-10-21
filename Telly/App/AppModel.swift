@@ -235,7 +235,8 @@ final class AppModel {
         if saved.id == activeId {
             live = nil; films = nil; series = nil
             await use(p)
-        } else {
+        } else if editing == nil {
+            // A new provider comes into use; editing another one leaves the one in use alone.
             page = .home
             await activate(saved)
         }

@@ -16,6 +16,7 @@ struct SetupView: View {
     @State private var password = ""
     @State private var url = ""
     @State private var allowCleartext = false
+    @State private var showPassword = false
     @State private var connecting = false
     @State private var error: String?
 
@@ -37,7 +38,17 @@ struct SetupView: View {
                         field("Username", $username)
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Password").font(.caption).foregroundStyle(Theme.muted)
-                            SecureField("", text: $password).textFieldStyle(.roundedBorder).textContentType(.password)
+                            HStack(spacing: 6) {
+                                if showPassword {
+                                    TextField("", text: $password).textFieldStyle(.roundedBorder).plainEntry()
+                                } else {
+                                    SecureField("", text: $password).textFieldStyle(.roundedBorder).textContentType(.password)
+                                }
+                                Button { showPassword.toggle() } label: { Image(systemName: showPassword ? "eye.slash" : "eye") }
+                                    .buttonStyle(.borderless)
+                                    .help(showPassword ? "Hide the password" : "Show the password")
+                                    .accessibilityLabel(showPassword ? "Hide the password" : "Show the password")
+                            }
                         }
                     }
                 } else {

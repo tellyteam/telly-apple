@@ -25,19 +25,22 @@ struct SettingsView: View {
         Form {
             SwiftUI.Section {
                 ForEach(app.providers) { saved in
-                    Button { Task { await app.switchProvider(saved.id) } } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(saved.provider.name)
-                                Text(saved.provider.isXtream ? "Xtream Codes" : "M3U playlist").font(.caption).foregroundStyle(Theme.muted)
+                    HStack {
+                        Button { Task { await app.switchProvider(saved.id) } } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(saved.provider.name)
+                                    Text(saved.provider.isXtream ? "Xtream Codes" : "M3U playlist").font(.caption).foregroundStyle(Theme.muted)
+                                }
+                                Spacer()
+                                if saved.id == app.activeId { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
                             }
-                            Spacer()
-                            if saved.id == app.activeId { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
+                            .contentShape(Rectangle())
                         }
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .disabled(saved.id == app.activeId)
+                        Button("Edit") { sheet = .edit(saved.id) }
                     }
-                    .buttonStyle(.plain)
-                    .disabled(saved.id == app.activeId)
                 }
                 Button("Add provider") { sheet = .add }
             } header: {
@@ -45,7 +48,7 @@ struct SettingsView: View {
             } footer: {
                 Text("Each provider keeps its own lists, My List and progress. Switch between them here or at the bottom of the sidebar.")
             }
-            if let p = app.provider, let id = app.activeId {
+            if let p = app.provider {
                 SwiftUI.Section(p.name) {
                     Toggle(isOn: Binding(get: { p.allowCleartext }, set: { app.setAllowCleartext($0) })) {
                         VStack(alignment: .leading) {
@@ -53,7 +56,6 @@ struct SettingsView: View {
                             Text("Only if it has no HTTPS. Traffic to it won't be encrypted.").font(.caption).foregroundStyle(Theme.muted)
                         }
                     }
-                    Button("Edit provider") { sheet = .edit(id) }
                     Button("Remove provider", role: .destructive) { confirmRemove = true }
                 }
             }
