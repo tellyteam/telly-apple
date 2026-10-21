@@ -11,6 +11,10 @@ struct LiveView: View {
         HStack(spacing: 0) {
             List(selection: $group) {
                 if !app.favouriteItems().live.isEmpty { Label("Favourites", systemImage: "star.fill").tag(Self.favourites) }
+                if !groups.isEmpty {
+                    HStack { Text("All channels"); Spacer(); Text("\(Self.everything(groups).count)").foregroundStyle(Theme.faint).font(.caption) }
+                        .tag(Self.all)
+                }
                 ForEach(groups) { g in
                     HStack { Text(g.name).lineLimit(1); Spacer(); Text("\(g.items.count)").foregroundStyle(Theme.faint).font(.caption) }.tag(g.name)
                 }
@@ -31,15 +35,25 @@ struct LiveView: View {
                 .filterField($filter, prompt: "Filter channels")
             }
         }
-        .navigationTitle(group == Self.favourites ? "Favourites" : group ?? "Live TV")
+        .navigationTitle(group == Self.favourites ? "Favourites" : group == Self.all ? "All channels" : group ?? "Live TV")
         .inlineTitle()
-        .onAppear { if group == nil { group = app.live?.first?.name } }
+        // All, so the filter searches every channel from the start.
+        .onAppear { if group == nil { group = Self.all } }
     }
 
     private static let favourites = "\u{1}favourites"
+    private static let all = "\u{1}all"
+
+    /** Every channel once (providers list some in several categories). */
+    private static func everything(_ groups: [ItemGroup<Channel>]) -> [Channel] {
+        var seen = Set<String>()
+        return groups.flatMap(\.items).filter { seen.insert($0.id).inserted }
+    }
 
     private func shown(_ groups: [ItemGroup<Channel>]) -> [Channel] {
-        let list = group == Self.favourites ? app.favouriteItems().live : groups.first { $0.name == group }?.items ?? []
+        let list = group == Self.favourites ? app.favouriteItems().live
+            : group == Self.all ? Self.everything(groups)
+            : groups.first { $0.name == group }?.items ?? []
         let q = filter.trimmingCharacters(in: .whitespaces)
         return q.isEmpty ? list : list.filter { $0.name.localizedCaseInsensitiveContains(q) }
     }

@@ -15,6 +15,10 @@ private struct CatalogLayout<Item: Hashable & Identifiable, Card: View>: View {
     var body: some View {
         HStack(spacing: 0) {
             List(selection: $group) {
+                if let groups, !groups.isEmpty {
+                    HStack { Text("All \(title.lowercased())").lineLimit(1); Spacer(); Text("\(everything.count)").foregroundStyle(Theme.faint).font(.caption) }
+                        .tag(Self.all)
+                }
                 ForEach(groups ?? []) { g in
                     HStack { Text(g.name).lineLimit(1); Spacer(); Text("\(g.items.count)").foregroundStyle(Theme.faint).font(.caption) }.tag(g.name)
                 }
@@ -35,14 +39,21 @@ private struct CatalogLayout<Item: Hashable & Identifiable, Card: View>: View {
                 .filterField($filter, prompt: "Filter \(title.lowercased())")
             }
         }
-        .navigationTitle(group ?? title)
+        .navigationTitle(group == Self.all || group == nil ? title : group!)
         .inlineTitle()
-        .onAppear { if group == nil { group = groups?.first?.name } }
+        // All, so the filter searches everything from the start.
+        .onAppear { if group == nil { group = Self.all } }
         .detailDestinations()
     }
 
+    /** Every item once (providers list some in several categories). */
+    private var everything: [Item] {
+        var seen = Set<Item.ID>()
+        return (groups ?? []).flatMap(\.items).filter { seen.insert($0.id).inserted }
+    }
+
     private var shown: [Item] {
-        let list = groups?.first { $0.name == group }?.items ?? []
+        let list = group == Self.all ? everything : groups?.first { $0.name == group }?.items ?? []
         let q = filter.trimmingCharacters(in: .whitespaces)
         return q.isEmpty ? list : list.filter { name($0).localizedCaseInsensitiveContains(q) }
     }
