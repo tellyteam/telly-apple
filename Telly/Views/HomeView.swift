@@ -10,7 +10,9 @@ struct HomeView: View {
                 if let hero = app.continueWatching.first { Hero(entry: hero) } else {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Welcome to telly").font(.largeTitle.weight(.bold))
-                        Text("Pick something from Live TV, Series or Films, and it'll show up here next time.").foregroundStyle(Theme.muted)
+                        Text(app.provider?.isXtream == true
+                             ? "Pick something from Live TV, Series or Films, and it'll show up here next time."
+                             : "Pick something from Live TV, and it'll show up here next time.").foregroundStyle(Theme.muted)
                     }
                     .padding(.horizontal, 24).padding(.top, 20)
                 }

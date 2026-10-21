@@ -1,6 +1,6 @@
 import SwiftUI
 
-/** Adding (or editing) the provider. The login stays on this iPad, in its Keychain. */
+/** Adding (or editing) the provider. The login stays on this device, in its Keychain. */
 struct SetupView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -57,8 +57,9 @@ struct SetupView: View {
             }
             .padding(32)
             .frame(maxWidth: 560)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20))
-            .padding(.vertical, 60)
+            // A card on the page when signing in; editing is already in a sheet, so no card in a card.
+            .background(existing == nil ? Theme.surface : .clear, in: RoundedRectangle(cornerRadius: 20))
+            .padding(.vertical, existing == nil ? 60 : 0)
             .frame(maxWidth: .infinity)
         }
         .background(Theme.background)

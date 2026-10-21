@@ -66,6 +66,8 @@ final class AppModel {
     var settings = Settings()
 
     var player: PlayRequest?
+    /** The page the sidebar shows (also chosen from the Mac's menu bar). */
+    var page: Page? = .home
 
     var sync: SyncConfig?
     /** A sync link opened from a QR code, waiting for the user to confirm. */

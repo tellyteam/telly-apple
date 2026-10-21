@@ -18,7 +18,6 @@ enum Page: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @Environment(AppModel.self) private var app
-    @State private var section: Page? = .home
     @State private var linkError: String?
 
     var body: some View {
@@ -30,7 +29,7 @@ struct RootView: View {
                 SetupView(existing: nil)
             } else {
                 NavigationSplitView {
-                    List(selection: $section) {
+                    List(selection: $app.page) {
                         ForEach(sections) { s in Label(s.rawValue, systemImage: s.icon).tag(s) }
                     }
                     // The wordmark, as large as on Fire TV and Mac, in place of a small bar title.
@@ -48,11 +47,11 @@ struct RootView: View {
                 } detail: {
                     NavigationStack {
                         // One dark-slate background on every page, as on the Mac and Fire TV.
-                        page(section ?? .home)
+                        page(app.page ?? .home)
                             .scrollContentBackground(.hidden)
                             .background(Theme.background.ignoresSafeArea())
                     }
-                        .id(section)
+                        .id(app.page)
                 }
             }
         }
