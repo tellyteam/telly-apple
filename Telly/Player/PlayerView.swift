@@ -79,7 +79,8 @@ struct PlayerView: View {
     private var controls: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
-                Button(action: close) { Image(systemName: "xmark").font(.title2.weight(.semibold)).frame(width: 44, height: 44) }
+                Button(action: close) { Image(systemName: "xmark").font(.title2.weight(.semibold)).frame(width: 44, height: 44).contentShape(Rectangle()) }
+                    .buttonStyle(.plain)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.title3.weight(.semibold)).lineLimit(1)
                     Text(subtitleText).font(.subheadline).foregroundStyle(Theme.muted).lineLimit(1)
@@ -144,6 +145,9 @@ struct PlayerView: View {
         } label: {
             Image(systemName: "ellipsis.circle").font(.title2).frame(width: 44, height: 44)
         }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
     }
 
     private func roundButton(_ icon: String, _ label: String, big: Bool = false, action: @escaping () -> Void) -> some View {
@@ -152,6 +156,8 @@ struct PlayerView: View {
                 .frame(width: big ? 96 : 72, height: big ? 96 : 72)
                 .background(.black.opacity(0.35), in: Circle())
         }
+        // Plain: a Mac otherwise draws its own square bezel around the round button.
+        .buttonStyle(.plain)
         .accessibilityLabel(label)
     }
 

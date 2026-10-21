@@ -37,6 +37,7 @@ struct FilmDetailView: View {
             .padding(.bottom, 40)
         }
         .ignoresSafeArea(edges: .top)
+        .noBarTitle()
         .task(id: film.id) { await load() }
     }
 
@@ -105,6 +106,7 @@ struct SeriesDetailView: View {
             .padding(.bottom, 40)
         }
         .ignoresSafeArea(edges: .top)
+        .noBarTitle()
         .task(id: series.id) { await load() }
     }
 

@@ -67,6 +67,15 @@ extension View {
         #endif
     }
 
+    /** No title in the window's bar (pages whose artwork runs up behind it). */
+    @ViewBuilder func noBarTitle() -> some View {
+        #if os(iOS)
+        self
+        #else
+        if #available(macOS 15, *) { toolbar(removing: .title) } else { navigationTitle("") }
+        #endif
+    }
+
     /** A bar that shows what's behind it. */
     func clearBar() -> some View {
         #if os(iOS)

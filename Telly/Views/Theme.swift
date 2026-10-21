@@ -21,11 +21,14 @@ struct Artwork: View {
             guard u.scheme == "https" || (u.scheme == "http" && app.provider?.allowCleartext == true) else { return nil }
             return u
         }
-        ZStack {
-            placeholder
-            if let allowed {
-                AsyncImage(url: allowed, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
-                    if let image = phase.image { image.resizable().aspectRatio(contentMode: contentMode) }
+        // Exactly the space it's given: a filled image would otherwise spill outside its frame.
+        Color.clear.overlay {
+            ZStack {
+                placeholder
+                if let allowed {
+                    AsyncImage(url: allowed, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+                        if let image = phase.image { image.resizable().aspectRatio(contentMode: contentMode) }
+                    }
                 }
             }
         }

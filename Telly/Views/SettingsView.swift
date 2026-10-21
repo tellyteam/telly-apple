@@ -56,6 +56,8 @@ struct SettingsView: View {
                 Text("telly is free software (GPL-3.0). It plays your own IPTV subscription and talks only to your provider\(app.syncShown ? ", and to the sync relay if you turn on sync" : ""). No accounts, analytics or tracking. Plays MKV and other formats with VLCKit (LGPL).")
             }
         }
+        // Rounded groups, as on iPad and in the Mac's System Settings (a Mac's default puts labels in a column).
+        .formStyle(.grouped)
         .navigationTitle("Settings")
         .sheet(isPresented: $editing) { SetupView(existing: app.provider).environment(app) }
         .confirmationDialog("Sign out and forget your provider?", isPresented: $confirmSignOut, titleVisibility: .visible) {
