@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 
 struct HomeView: View {
@@ -124,18 +125,37 @@ private struct ContinueCard: View {
     }
 }
 
-/** A live channel in a row: its logo on a dark tile. */
+/**
+ * A live channel in a row. Providers send either a logo, shown whole on a dark tile, or a wide
+ * picture (a banner for the channel), which fills the tile instead of sitting small inside it.
+ */
 struct ChannelTile: View {
+    @Environment(AppModel.self) private var app
     let channel: Channel
+    @State private var image: CGImage?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack {
-                RoundedRectangle(cornerRadius: Theme.cardRadius).fill(Theme.surface)
-                Artwork(url: channel.logo, title: channel.name, contentMode: .fit).padding(18)
+                if let image {
+                    let wide = Double(image.width) / Double(max(image.height, 1)) >= 1.45
+                    Theme.surface
+                    Image(decorative: image, scale: 1).resizable()
+                        .aspectRatio(contentMode: wide ? .fill : .fit)
+                        .padding(wide ? 0 : 18)
+                } else {
+                    Artwork(url: nil, title: channel.name).placeholder
+                }
             }
             .frame(width: 200, height: 112)
             .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius))
             Text(channel.name).font(.footnote).foregroundStyle(Theme.muted).lineLimit(1).frame(width: 200, alignment: .leading)
+        }
+        .task(id: channel.logo) {
+            guard let url = Artwork.allowed(channel.logo, app),
+                  let (data, _) = try? await URLSession.shared.data(from: url),
+                  let source = CGImageSourceCreateWithData(data as CFData, nil) else { return }
+            image = CGImageSourceCreateImageAtIndex(source, 0, nil)
         }
     }
 }

@@ -17,25 +17,29 @@ struct Artwork: View {
     var contentMode: ContentMode = .fill
 
     var body: some View {
-        let allowed = url.flatMap(URL.init(string:)).flatMap { u -> URL? in
-            guard u.scheme == "https" || (u.scheme == "http" && app.provider?.allowCleartext == true) else { return nil }
-            return u
-        }
         // Exactly the space it's given: a filled image would otherwise spill outside its frame.
         Color.clear.overlay {
-            ZStack {
-                placeholder
-                if let allowed {
-                    AsyncImage(url: allowed, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
-                        if let image = phase.image { image.resizable().aspectRatio(contentMode: contentMode) }
-                    }
+            if let allowed = Artwork.allowed(url, app) {
+                AsyncImage(url: allowed, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+                    // The titled tile only until the image arrives, never behind it.
+                    if let image = phase.image { image.resizable().aspectRatio(contentMode: contentMode) } else { placeholder }
                 }
+            } else {
+                placeholder
             }
         }
         .clipped()
     }
 
-    private var placeholder: some View {
+    /** The address, if the provider's plain-HTTP setting allows it. */
+    static func allowed(_ url: String?, _ app: AppModel) -> URL? {
+        url.flatMap(URL.init(string:)).flatMap { u -> URL? in
+            guard u.scheme == "https" || (u.scheme == "http" && app.provider?.allowCleartext == true) else { return nil }
+            return u
+        }
+    }
+
+    var placeholder: some View {
         let hue = Double(title.unicodeScalars.reduce(7) { ($0 &* 31 &+ Int($1.value)) % 360 }) / 360
         return LinearGradient(colors: [Color(hue: hue, saturation: 0.45, brightness: 0.45), Color(hue: hue, saturation: 0.4, brightness: 0.16)],
                               startPoint: .topLeading, endPoint: .bottomTrailing)
