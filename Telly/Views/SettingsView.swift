@@ -50,10 +50,13 @@ struct SettingsView: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture(perform: tapVersion)
+                #if os(macOS)
+                Button("Check for Updates…") { Updates.check() }
+                #endif
             } header: {
                 Text("About")
             } footer: {
-                Text("telly is free software (GPL-3.0). It plays your own IPTV subscription and talks only to your provider\(app.syncShown ? ", and to the sync relay if you turn on sync" : ""). No accounts, analytics or tracking. Plays MKV and other formats with VLCKit (LGPL).")
+                Text("telly is free software (GPL-3.0). It plays your own IPTV subscription and talks only to your provider\(Device.name == "Mac" ? ", and to GitHub once a day to check for updates" : "")\(app.syncShown ? ", and to the sync relay if you turn on sync" : ""). No accounts, analytics or tracking. Plays MKV and other formats with VLCKit (LGPL).")
             }
         }
         // Rounded groups, as on iPad and in the Mac's System Settings (a Mac's default puts labels in a column).

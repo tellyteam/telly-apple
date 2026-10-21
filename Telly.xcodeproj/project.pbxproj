@@ -11,6 +11,8 @@
 		7E1100000000000000000002 /* MobileVLCKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7E1000000000000000000010 /* MobileVLCKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7E1100000000000000000003 /* VLCKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7E1000000000000000000012 /* VLCKit.xcframework */; };
 		7E1100000000000000000004 /* VLCKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7E1000000000000000000012 /* VLCKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		7E1100000000000000000005 /* Sparkle.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7E1000000000000000000014 /* Sparkle.framework */; };
+		7E1100000000000000000006 /* Sparkle.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7E1000000000000000000014 /* Sparkle.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,6 +44,7 @@
 			dstSubfolderSpec = 10;
 			files = (
 				7E1100000000000000000004 /* VLCKit.xcframework in Embed Frameworks */,
+				7E1100000000000000000006 /* Sparkle.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -56,6 +59,7 @@
 		7E1000000000000000000003 /* telly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = telly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7E1000000000000000000012 /* VLCKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = VLCKit.xcframework; sourceTree = "<group>"; };
 		7E1000000000000000000013 /* Info-Mac.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-Mac.plist"; sourceTree = "<group>"; };
+		7E1000000000000000000014 /* Sparkle.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = Sparkle.framework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -92,6 +96,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7E1100000000000000000003 /* VLCKit.xcframework in Frameworks */,
+				7E1100000000000000000005 /* Sparkle.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -133,6 +138,7 @@
 			children = (
 				7E1000000000000000000010 /* MobileVLCKit.xcframework */,
 				7E1000000000000000000012 /* VLCKit.xcframework */,
+				7E1000000000000000000014 /* Sparkle.framework */,
 			);
 			path = Vendor;
 			sourceTree = "<group>";
@@ -451,6 +457,10 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor",
+				);
 				INFOPLIST_FILE = "Config/Info-Mac.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = telly;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
@@ -480,6 +490,10 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor",
+				);
 				INFOPLIST_FILE = "Config/Info-Mac.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = telly;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";

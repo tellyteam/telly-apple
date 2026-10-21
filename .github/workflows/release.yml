@@ -1,0 +1,66 @@
+# Push an annotated tag like v2.0.1 to build telly for Mac, sign the update for Sparkle and publish
+# telly-mac.zip and appcast.xml as a GitHub Release. Installed copies find it through appcast.xml
+# at releases/latest (see Config/Info-Mac.plist).
+#
+# The tag's message is the release notes, as "- item" lines: never GitHub's generated notes.
+# "Run workflow" by hand builds and signs everything without publishing, as a check.
+#
+# Actions are pinned to exact commits: this job holds the update signing key.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Fetch VLCKit and Sparkle (checked against their published checksums)
+        run: sh scripts/fetch-vendor.sh
+      - name: Version from the tag (2.0.1 is build 20001)
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.$GITHUB_RUN_NUMBER"; fi
+          build=$(echo "$v" | awk -F. '{ print $1 * 10000 + $2 * 100 + $3 }')
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "BUILD=$build" >> "$GITHUB_ENV"
+      - name: Build
+        run: |
+          xcodebuild -project Telly.xcodeproj -scheme "Telly Mac" -configuration Release -derivedDataPath build \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" build
+          ditto -c -k --keepParent build/Build/Products/Release/telly.app telly-mac.zip
+      - name: Release notes from the tag
+        run: |
+          : > notes.md
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$(git cat-file -t "$GITHUB_REF_NAME" 2>/dev/null)" = tag ]; then
+            git for-each-ref "refs/tags/$GITHUB_REF_NAME" --format='%(contents)' > notes.md
+          fi
+          [ -s notes.md ] || echo "- (dry run)" > notes.md
+      - name: Sign the update and write the appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle.key"
+          signature=$(Vendor/sparkle-bin/sign_update --ed-key-file "$RUNNER_TEMP/sparkle.key" telly-mac.zip)
+          rm "$RUNNER_TEMP/sparkle.key"
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/telly-mac.zip"
+          sh scripts/make-appcast.sh "$VERSION" "$BUILD" "$url" "$signature" notes.md > appcast.xml
+          cat appcast.xml
+      - name: Publish
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" telly-mac.zip appcast.xml --title "telly for Mac $VERSION" --notes-file notes.md
+      - name: Keep the dry run's files
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: telly-mac-dry-run
+          path: |
+            telly-mac.zip
+            appcast.xml

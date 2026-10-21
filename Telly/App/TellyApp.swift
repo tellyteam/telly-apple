@@ -5,6 +5,12 @@ struct TellyApp: App {
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var phase
 
+    #if os(macOS)
+    init() {
+        Updates.start()
+    }
+    #endif
+
     var body: some Scene {
         #if os(iOS)
         WindowGroup { root }
@@ -33,6 +39,9 @@ struct TellyCommands: Commands {
     let model: AppModel
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") { Updates.check() }
+        }
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { go(.settings) }.keyboardShortcut(",")
         }

@@ -28,7 +28,7 @@ telly is also on [Android TV and Fire TV](https://github.com/tellyteam/telly-and
 You need Xcode 26 or later.
 
 ```bash
-scripts/fetch-vlckit.sh   # MobileVLCKit (iPad) and VLCKit (Mac), LGPL-2.1, checked against VideoLAN's published checksums
+scripts/fetch-vendor.sh   # VLCKit (iPad and Mac, LGPL-2.1) and Sparkle (Mac updates, MIT), checked against their published checksums
 open Telly.xcodeproj
 ```
 
@@ -36,7 +36,15 @@ The **Telly** scheme builds the iPad app and **Telly Mac** the Mac app.
 
 ## Install on your Mac
 
-Choose the **Telly Mac** scheme and **My Mac**, and press Run (⌘R), or build it from the terminal:
+Download `telly-mac.zip` from the [latest release](https://github.com/tellyteam/telly-apple/releases/latest)
+(macOS 14 or later), unzip it and drag **telly** to Applications. telly isn't signed by Apple, so
+the first time, **right-click telly → Open → Open**.
+
+**Updating:** telly checks for a new version once a day (or choose **telly → Check for Updates…**)
+and asks before installing. Updates are verified against telly's own signing key. After an update,
+macOS may ask once whether telly can use its Keychain entry (your login): choose **Always Allow**.
+
+To build it yourself, choose the **Telly Mac** scheme and **My Mac** and press Run (⌘R), or from the terminal:
 
 ```bash
 xcodebuild -project Telly.xcodeproj -scheme "Telly Mac" -configuration Release -derivedDataPath build/mac build
@@ -65,6 +73,19 @@ Apps signed with a free account stop opening after 7 days. To renew, plug the iP
 | `Telly/App/Platform.swift` | What differs between iPad and Mac |
 | `Telly/Assets.xcassets` | The wordmark and icons, drawn by [telly-brand](https://github.com/tellyteam/telly-brand) |
 
+## Releasing the Mac app
+
+Push an annotated tag; its message, as `- item` lines, is the release notes (shown on GitHub and in
+the update window). GitHub Actions builds the app, signs the update with the key in the
+`SPARKLE_PRIVATE_KEY` secret and publishes `telly-mac.zip` and `appcast.xml`:
+
+```bash
+git tag -a v2.0.1 -m "- What changed, in a line or two" && git push origin v2.0.1
+```
+
+Every release must be signed with the same key (made with `Vendor/sparkle-bin/generate_keys`), or
+installed copies won't accept the update.
+
 ## Test
 
 ```bash
@@ -73,4 +94,4 @@ xcodebuild test -project Telly.xcodeproj -scheme Telly -destination 'platform=iO
 
 ## Licence
 
-GPL-3.0-only. VLCKit is LGPL-2.1 (`Vendor/*-COPYING.txt` once fetched).
+GPL-3.0-only. VLCKit is LGPL-2.1 and Sparkle is MIT (`Vendor/*-COPYING.txt` and `Vendor/Sparkle-LICENSE.txt` once fetched).
