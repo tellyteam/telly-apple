@@ -74,12 +74,15 @@ final class PlayerController {
         url = u
         startMs = startAt
         let ext = u.pathExtension.lowercased()
+        log("load .\(ext.isEmpty ? "(none)" : ext) from \(u.scheme ?? "?") start=\(Int(startAt / 1000))s")
+        if Self.logging { Task { await Self.probe(u) } }
         if ["m3u8", "mp4", "m4v", "mov", "mp3", "aac", "m4a"].contains(ext) { startApple() } else { startVLC() }
     }
 
     private func startApple() {
         guard let url else { return }
         engine = .apple
+        log("engine: Apple")
         let item = AVPlayerItem(url: url)
         av.replaceCurrentItem(with: item)
         if startMs > 0 { av.seek(to: CMTime(value: CMTimeValue(startMs), timescale: 1000)) }
@@ -93,6 +96,8 @@ final class PlayerController {
     private func startVLC() {
         guard let url else { return }
         engine = .vlc
+        vlcPlayed = false
+        log("engine: VLC")
         let player = VLCMediaPlayer()
         player.drawable = view.vlcSurface
         let media = VLCMedia(url: url)
@@ -193,6 +198,7 @@ final class PlayerController {
     private func tickApple() {
         guard let item = av.currentItem else { return }
         if item.status == .failed {
+            log("Apple failed: \(item.error.map { ($0 as NSError).domain + " " + String(($0 as NSError).code) + " " + $0.localizedDescription } ?? "no error"); trying VLC")
             // Apple's player can't open it: VLC usually can.
             startMs = position > 0 ? position : startMs
             startVLC()
@@ -222,12 +228,20 @@ final class PlayerController {
 
     private func tickVLC() {
         guard let vlc else { return }
+        if vlc.state != lastState {
+            lastState = vlc.state
+            log("VLC state \(VLCMediaPlayerStateToString(vlc.state) ?? "?") playing=\(vlc.isPlaying)")
+        }
         position = Double(vlc.time.intValue)
         duration = Double(vlc.media?.length.intValue ?? 0)
         playing = vlc.isPlaying
+        if vlc.isPlaying { vlcPlayed = true }
         switch vlc.state {
         case .error:
-            error = "This stream won't play. It may be offline, or in a format telly can't open."
+            failed()
+        case .stopped where !vlcPlayed && error == nil:
+            // VLC gives up on a refused stream by stopping before it ever plays.
+            failed()
         case .ended:
             ended = true
         case .buffering, .opening:
@@ -262,6 +276,76 @@ final class PlayerController {
     }
 
     @ObservationIgnored private var lastLog = Date.distantPast
+    @ObservationIgnored private var lastState: VLCMediaPlayerState?
+    @ObservationIgnored private var vlcPlayed = false
+    @ObservationIgnored private var explaining = false
+
+    /** Neither engine could play it: says why, from how the provider answers for the stream. */
+    private func failed() {
+        guard error == nil, !explaining, let url else { return }
+        explaining = true
+        buffering = false
+        Task {
+            let status = await Self.status(of: url)
+            explaining = false
+            guard self.url == url else { return }
+            error = Self.explain(status)
+            log("failed: provider answered \(status.map(String.init) ?? "nothing")")
+        }
+    }
+
+    /** What the provider answers for [url] (the status only), or nil if it can't be reached. */
+    private static func status(of url: URL) async -> Int? {
+        var r = URLRequest(url: url, timeoutInterval: 10)
+        r.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+        r.setValue("\(Device.userAgent)/1", forHTTPHeaderField: "User-Agent")
+        return ((try? await URLSession.shared.data(for: r))?.1 as? HTTPURLResponse)?.statusCode
+    }
+
+    static func explain(_ status: Int?) -> String {
+        switch status {
+        case nil: return "Couldn't reach your provider. Check your internet connection."
+        case 401: return "Your provider didn't accept the login for this stream. Check it in Settings → Providers."
+        case 403, 511:
+            return "Your provider refused this stream. This often happens on a VPN: try turning it off. If not, the channel may be off air, or not part of your subscription."
+        case 404, 410: return "This stream isn't on your provider any more. Refreshing your lists in Settings may help."
+        case 458, 509: return "Your provider says the account is already in use, perhaps on another device. Stop watching there and try again."
+        case 429, 503: return "Your provider is busy. Try again in a minute."
+        default: return "This stream won't play. It may be off air, or in a format telly can't open."
+        }
+    }
+
+    /**
+     * Troubleshooting: asks for the stream as each player would, and logs only what came back
+     * (status, type, the host it was redirected to, the playlist's first line). Never the address.
+     */
+    private static func probe(_ url: URL) async {
+        // The same stream in the other live format, too.
+        let other = url.pathExtension == "m3u8" ? url.deletingPathExtension().appendingPathExtension("ts") : nil
+        for (agent, target) in [("AppleCoreMedia/1.0.0 (Macintosh)", url), ("VLC/3.0.21 LibVLC/3.0.21", url), ("\(Device.userAgent)/1", url)]
+            + (other.map { [("VLC/3.0.21 .ts", $0)] } ?? []) {
+            let url = target
+            var r = URLRequest(url: url, timeoutInterval: 15)
+            r.setValue(agent, forHTTPHeaderField: "User-Agent")
+            r.setValue("bytes=0-1023", forHTTPHeaderField: "Range")
+            do {
+                let (data, response) = try await URLSession.shared.data(for: r)
+                let h = response as? HTTPURLResponse
+                let moved = response.url?.host != url.host ? " redirected to \(response.url?.host ?? "?")" : ""
+                let first = String(decoding: data.prefix(60), as: UTF8.self).split(separator: "\n").first.map(String.init) ?? ""
+                let safeFirst = first.hasPrefix("#") ? first : "(\(data.count) bytes)"
+                FileHandle.standardError.write(Data("player: probe [\(agent.prefix(14))] \(h?.statusCode ?? 0) \(h?.value(forHTTPHeaderField: "Content-Type") ?? "-")\(moved) \(safeFirst)\n".utf8))
+            } catch {
+                FileHandle.standardError.write(Data("player: probe [\(agent.prefix(14))] failed: \((error as NSError).code) \(error.localizedDescription)\n".utf8))
+            }
+        }
+    }
+
+    /** Troubleshooting (TELLY_PLAYER_LOG): what the player does. Never the address (it holds the login). */
+    private func log(_ line: String) {
+        guard Self.logging else { return }
+        FileHandle.standardError.write(Data("player: \(line)\n".utf8))
+    }
     private static let logging = ProcessInfo.processInfo.environment["TELLY_PLAYER_LOG"] != nil
 }
 

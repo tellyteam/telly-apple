@@ -63,3 +63,15 @@ final class PlaybackTests: XCTestCase {
         XCTAssertEqual(channels[0].epgId, "a")
     }
 }
+
+@MainActor
+final class PlayerFailureTests: XCTestCase {
+    func testExplainsWhatTheProviderAnswered() {
+        XCTAssertTrue(PlayerController.explain(511).contains("VPN"))
+        XCTAssertTrue(PlayerController.explain(403).contains("VPN"))
+        XCTAssertTrue(PlayerController.explain(509).contains("another device"))
+        XCTAssertTrue(PlayerController.explain(401).contains("login"))
+        XCTAssertTrue(PlayerController.explain(nil).contains("internet"))
+        XCTAssertTrue(PlayerController.explain(500).contains("won't play"))
+    }
+}
