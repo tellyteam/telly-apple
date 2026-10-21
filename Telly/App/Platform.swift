@@ -76,6 +76,18 @@ extension View {
         #endif
     }
 
+    /**
+     * A text field inside a Form, typed into where its placeholder is. On a Mac a Form would
+     * otherwise show the field's title as a label beside it, and put the typing on the right.
+     */
+    func formField(trailing: Bool = false) -> some View {
+        #if os(iOS)
+        labelsHidden().multilineTextAlignment(trailing ? .trailing : .leading)
+        #else
+        labelsHidden().textFieldStyle(.roundedBorder)
+        #endif
+    }
+
     /** A bar that shows what's behind it. */
     func clearBar() -> some View {
         #if os(iOS)

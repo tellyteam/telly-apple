@@ -121,13 +121,15 @@ private struct SyncSection: View {
                 Button("I have a code") { joining.toggle() }
                 if joining {
                     HStack {
-                        TextField("ABCD-EFGH-JKMN-PQRS", text: $code)
+                        TextField("Code", text: $code, prompt: Text("ABCD-EFGH-JKMN-PQRS"))
+                            .formField()
                             .plainEntry(capitals: true).font(.body.monospaced())
                         Button(linking ? "Linking…" : "Link") { link(code) }.disabled(linking || code.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
                 LabeledContent("Relay") {
-                    TextField("https://…", text: $relay).multilineTextAlignment(.trailing)
+                    TextField("Relay", text: $relay, prompt: Text("https://…"))
+                        .formField(trailing: true)
                         .plainEntry(url: true)
                 }
                 if let error { Text(error).foregroundStyle(.orange).font(.callout) }
