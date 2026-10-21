@@ -2,7 +2,7 @@ import Foundation
 
 /**
  * Parsing for the Xtream Codes `player_api.php` API. Panels are inconsistent about numbers versus
- * strings and nulls, so every field is read leniently. Mirrors the Mac app's xtream.ts.
+ * strings and nulls, so every field is read leniently. Mirrors telly-lg's xtream.ts.
  */
 enum Xtream {
     typealias Obj = [String: Any]

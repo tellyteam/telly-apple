@@ -64,7 +64,7 @@ final class SyncParcelTests: XCTestCase {
     }
 
     func testReadsWhatTheOtherAppsWrite() throws {
-        // As written by the Mac app (JSON.stringify) and Fire TV (kotlinx), field order varies.
+        // As written by the LG app (JSON.stringify) and Fire TV (kotlinx), field order varies.
         let text = #"{"v":1,"at":1760000000000,"progress":{"series/1234.mkv":[600000,2700000,1760000000000]},"history":[{"kind":"series","id":"1234","series":"88","at":1760000000000}],"list":{"film:4567":[1760000000000,true]},"cleared":0}"#
         let p = try XCTUnwrap(SyncParcel.parse(text))
         XCTAssertEqual(p.progress["series/1234.mkv"], Progress(position: 600_000, duration: 2_700_000, at: 1_760_000_000_000))

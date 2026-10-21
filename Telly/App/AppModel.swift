@@ -43,7 +43,7 @@ func favKey(_ kind: FavKind, _ id: String) -> String { "\(kind.rawValue):\(id)" 
 /** Whole milliseconds: the sync format, and the other apps, use integers. */
 private func nowMs() -> Double { (Date().timeIntervalSince1970 * 1000).rounded() }
 
-/** The whole app's state: provider, lists, progress, history, My List and sync. Mirrors the Mac app. */
+/** The whole app's state: provider, lists, progress, history, My List and sync. Mirrors the LG app (telly-lg). */
 @MainActor
 @Observable
 final class AppModel {
