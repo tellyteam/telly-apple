@@ -28,11 +28,11 @@ struct LiveView: View {
                         .contextMenu { favouriteSwipe(c) }
                 }
                 .listStyle(.plain)
-                .searchable(text: $filter, placement: .navigationBarDrawer(displayMode: .always), prompt: "Filter channels")
+                .filterField($filter, prompt: "Filter channels")
             }
         }
         .navigationTitle(group == Self.favourites ? "Favourites" : group ?? "Live TV")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineTitle()
         .onAppear { if group == nil { group = app.live?.first?.name } }
     }
 

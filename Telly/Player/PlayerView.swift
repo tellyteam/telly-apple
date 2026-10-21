@@ -14,6 +14,9 @@ struct PlayerView: View {
     @State private var nextCountdown: Int?
     @State private var dismissedPrompt = false
     @State private var promptDeadline: Date?
+    #if os(macOS)
+    @FocusState private var focused: Bool
+    #endif
 
     private var item: Channel { request.items[min(max(index, 0), request.items.count - 1)] }
     private var hasNext: Bool { index + 1 < request.items.count }
@@ -24,6 +27,9 @@ struct PlayerView: View {
             VideoSurface(view: player.view).ignoresSafeArea()
             // Taps land here, not on the video views (VLC's would swallow them).
             Color.clear.contentShape(Rectangle()).ignoresSafeArea()
+                #if os(macOS)
+                .onTapGesture(count: 2) { toggleFullScreen() }
+                #endif
                 .onTapGesture { toggleControls() }
             if player.buffering && player.error == nil { ProgressView().controlSize(.large).tint(.white) }
             if let error = player.error {
@@ -40,16 +46,28 @@ struct PlayerView: View {
         // Overlays rather than ZStack siblings, so they always sit above the video's UIKit layer.
         .overlay { if controlsVisible { controls.transition(.opacity) } }
         .overlay { if let n = nextCountdown, hasNext { nextPrompt(n) } }
-        .statusBarHidden(!controlsVisible)
-        .persistentSystemOverlays(.hidden)
+        .playerChrome(visible: controlsVisible)
+        #if os(macOS)
+        .onContinuousHover { phase in
+            // Moving the mouse brings the controls back; they hide again, with the pointer, after a pause.
+            if case .active = phase { showControls() }
+        }
+        .focusable()
+        .focusEffectDisabled()
+        .focused($focused)
+        .onKeyPress(action: key)
+        #endif
         .onAppear {
             index = request.index
-            UIApplication.shared.isIdleTimerDisabled = true
+            Device.keepAwake(true)
+            #if os(macOS)
+            focused = true
+            #endif
             start(at: request.startAt ?? (request.live ? 0 : Playback.resumePosition(app.progressOf(item.url))))
             scheduleHide()
         }
         .onDisappear {
-            UIApplication.shared.isIdleTimerDisabled = false
+            Device.keepAwake(false)
             player.shutdown()
         }
         .onChange(of: player.position) { tick() }
@@ -174,9 +192,43 @@ struct PlayerView: View {
         guard let seconds else { return }
         hideTask = Task {
             try? await Task.sleep(for: .seconds(seconds))
-            if !Task.isCancelled && player.playing && scrubbing == nil { withAnimation(.easeOut(duration: 0.3)) { controlsVisible = false } }
+            if !Task.isCancelled && player.playing && scrubbing == nil {
+                withAnimation(.easeOut(duration: 0.3)) { controlsVisible = false }
+                #if os(macOS)
+                NSCursor.setHiddenUntilMouseMoves(true)
+                #endif
+            }
         }
     }
+
+    #if os(macOS)
+    private func showControls() {
+        if !controlsVisible { withAnimation(.easeOut(duration: 0.15)) { controlsVisible = true } }
+        scheduleHide()
+    }
+
+    private func toggleFullScreen() {
+        NSApp.keyWindow?.toggleFullScreen(nil)
+    }
+
+    /** The keyboard: space, arrows, F for full screen, Esc to leave full screen or the player. */
+    private func key(_ press: KeyPress) -> KeyPress.Result {
+        switch press.key {
+        case .space: player.togglePlay()
+        case .leftArrow where !request.live: player.skip(-10)
+        case .rightArrow where !request.live: player.skip(10)
+        case .upArrow where request.live: zap(-1)
+        case .downArrow where request.live: zap(1)
+        case .escape:
+            if NSApp.keyWindow?.styleMask.contains(.fullScreen) == true { toggleFullScreen() } else { close() }
+        default:
+            guard press.characters.lowercased() == "f" else { return .ignored }
+            toggleFullScreen()
+        }
+        showControls()
+        return .handled
+    }
+    #endif
 
     // MARK: Playback
 
@@ -240,8 +292,16 @@ struct PlayerView: View {
     }
 }
 
+#if os(iOS)
 private struct VideoSurface: UIViewRepresentable {
     let view: VideoView
     func makeUIView(context: Context) -> VideoView { view }
     func updateUIView(_ uiView: VideoView, context: Context) {}
 }
+#else
+private struct VideoSurface: NSViewRepresentable {
+    let view: VideoView
+    func makeNSView(context: Context) -> VideoView { view }
+    func updateNSView(_ nsView: VideoView, context: Context) {}
+}
+#endif

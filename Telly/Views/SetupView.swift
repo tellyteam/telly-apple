@@ -29,7 +29,7 @@ struct SetupView: View {
                 .pickerStyle(.segmented)
                 field("Name (optional)", $name, placeholder: defaultProviderName)
                 if xtream {
-                    field("Server address", $server, placeholder: "example.com:8080", keyboard: .URL)
+                    field("Server address", $server, placeholder: "example.com:8080", url: true)
                     HStack(spacing: 12) {
                         field("Username", $username)
                         VStack(alignment: .leading, spacing: 6) {
@@ -38,7 +38,7 @@ struct SetupView: View {
                         }
                     }
                 } else {
-                    field("Playlist URL", $url, placeholder: "https://…/playlist.m3u", keyboard: .URL)
+                    field("Playlist URL", $url, placeholder: "https://…/playlist.m3u", url: true)
                 }
                 Toggle(isOn: $allowCleartext) {
                     VStack(alignment: .leading) {
@@ -52,7 +52,7 @@ struct SetupView: View {
                         .buttonStyle(.borderedProminent).disabled(connecting || !complete)
                     if existing != nil { Button("Cancel") { dismiss() }.buttonStyle(.bordered) }
                 }
-                Text("Your login stays on this iPad, in its Keychain. telly only talks to your provider.")
+                Text("Your login stays on this \(Device.name), in its Keychain. telly only talks to your provider.")
                     .font(.caption).foregroundStyle(Theme.faint)
             }
             .padding(32)
@@ -65,14 +65,12 @@ struct SetupView: View {
         .onAppear(perform: fill)
     }
 
-    private func field(_ label: String, _ text: Binding<String>, placeholder: String = "", keyboard: UIKeyboardType = .default) -> some View {
+    private func field(_ label: String, _ text: Binding<String>, placeholder: String = "", url: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label).font(.caption).foregroundStyle(Theme.muted)
             TextField(placeholder, text: text)
                 .textFieldStyle(.roundedBorder)
-                .keyboardType(keyboard)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+                .plainEntry(url: url)
         }
     }
 

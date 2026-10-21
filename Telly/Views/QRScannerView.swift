@@ -1,6 +1,20 @@
 import SwiftUI
+#if os(iOS)
 import VisionKit
+#endif
 
+extension View {
+    /** Shows the camera to read a sync QR code (iPad; Macs show their code instead). */
+    func qrScanner(isPresented: Binding<Bool>, onFound: @escaping (String) -> Void) -> some View {
+        #if os(iOS)
+        sheet(isPresented: isPresented) { QRScannerView(onFound: onFound) }
+        #else
+        self
+        #endif
+    }
+}
+
+#if os(iOS)
 /** Reads a telly sync QR code with the camera (the code shown on a Fire TV, Mac or another iPad). */
 struct QRScannerView: View {
     let onFound: (String) -> Void
@@ -57,3 +71,4 @@ struct QRScannerView: View {
         }
     }
 }
+#endif

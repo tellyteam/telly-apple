@@ -32,11 +32,11 @@ private struct CatalogLayout<Item: Hashable & Identifiable, Card: View>: View {
                     }
                     .padding(20)
                 }
-                .searchable(text: $filter, placement: .navigationBarDrawer(displayMode: .always), prompt: "Filter \(title.lowercased())")
+                .filterField($filter, prompt: "Filter \(title.lowercased())")
             }
         }
         .navigationTitle(group ?? title)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineTitle()
         .onAppear { if group == nil { group = groups?.first?.name } }
         .detailDestinations()
     }
@@ -131,7 +131,7 @@ struct SearchView: View {
             }
             .padding(.vertical, 20)
         }
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Films, series and channels")
+        .filterField($query, prompt: "Films, series and channels")
         .navigationTitle("Search")
         .detailDestinations()
     }

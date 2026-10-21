@@ -60,11 +60,11 @@ struct HomeView: View {
         }
         .refreshable { await app.refresh() }
         .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineTitle()
         .ignoresSafeArea(edges: .top)
         .background(Theme.background.ignoresSafeArea())
         // A see-through bar rather than none, so the sidebar button stays.
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .clearBar()
         .detailDestinations()
     }
 }

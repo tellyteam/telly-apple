@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Many IPTV providers have no HTTPS. telly itself still refuses plain HTTP unless the user
+	     allows it for their provider in Settings (HTTP.swift). -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<!-- telly://sync?code=… links, from the QR code another device shows. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>io.github.tellyteam.telly.sync</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>telly</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

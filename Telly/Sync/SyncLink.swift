@@ -1,5 +1,4 @@
 import CoreImage.CIFilterBuiltins
-import UIKit
 
 /**
  * The address a QR code carries to link another device (telly-sync PROTOCOL.md):
@@ -24,13 +23,13 @@ enum SyncLink {
         return relay.hasPrefix("https://") ? (code, relay) : nil
     }
 
-    /** A crisp QR image of [text], for showing this iPad's code to another device. */
-    static func image(_ text: String, scale: CGFloat = 10) -> UIImage? {
+    /** A crisp QR image of [text], for showing this device's code to another. */
+    static func image(_ text: String, scale: CGFloat = 10) -> CGImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(text.utf8)
         filter.correctionLevel = "M"
         guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: scale, y: scale)),
               let cg = CIContext().createCGImage(output, from: output.extent) else { return nil }
-        return UIImage(cgImage: cg)
+        return cg
     }
 }

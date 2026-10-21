@@ -1,9 +1,15 @@
 import Foundation
 import Security
 
-/** Secrets (the provider login, the sync code) in the iPad's Keychain, this device only. */
+/** Secrets (the provider login, the sync code) in this device's Keychain, never synced to other devices. */
 enum Keychain {
+    #if os(iOS)
     private static let service = "io.github.tellyteam.telly"
+    #else
+    // Not the old Mac app's (the same name, in the same login Keychain): sharing it would let each
+    // app overwrite the other's login.
+    private static let service = "io.github.tellyteam.telly.native"
+    #endif
 
     static func get(_ name: String) -> String? {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
@@ -30,8 +36,7 @@ enum Keychain {
 /** The app's own records (progress, history, My List…) as JSON files, with complete file protection. */
 enum Store {
     private static var dir: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("store", isDirectory: true)
+        Device.dataDirectory.appendingPathComponent("store", isDirectory: true)
     }
 
     static func read<T: Decodable>(_ name: String, as type: T.Type) -> T? {
@@ -42,7 +47,7 @@ enum Store {
     static func write<T: Encodable>(_ name: String, _ value: T) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         guard let data = try? JSONEncoder().encode(value) else { return }
-        try? data.write(to: dir.appendingPathComponent("\(name).json"), options: [.atomic, .completeFileProtection])
+        try? data.write(to: dir.appendingPathComponent("\(name).json"), options: [.atomic, Device.fileProtection])
     }
 
     static func delete(_ name: String) {

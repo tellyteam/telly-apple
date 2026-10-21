@@ -1,7 +1,12 @@
 import AVFoundation
-import MobileVLCKit
 import Observation
+#if os(iOS)
+import MobileVLCKit
 import UIKit
+#else
+import AppKit
+import VLCKit
+#endif
 
 struct Track: Hashable, Identifiable {
     let id: String
@@ -47,8 +52,10 @@ final class PlayerController {
         av.appliesMediaSelectionCriteriaAutomatically = false
         view.playerLayer.player = av
         view.playerLayer.videoGravity = .resizeAspect
+        #if os(iOS)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
+        #endif
         ticker = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
@@ -90,7 +97,7 @@ final class PlayerController {
         player.drawable = view.vlcSurface
         let media = VLCMedia(url: url)
         media.addOption(":network-caching=1500")
-        media.addOption(":http-user-agent=telly-ipad")
+        media.addOption(":http-user-agent=\(Device.userAgent)")
         if startMs > 0 { media.addOption(":start-time=\(Int(startMs / 1000))") }
         player.media = media
         vlc = player
@@ -242,10 +249,23 @@ final class PlayerController {
                 vlc.currentVideoSubTitleIndex = -1
                 subtitlesSettled = true
             }
+            logStats(vlc)
         }
     }
+
+    /** Troubleshooting (TELLY_PLAYER_LOG): pictures shown and lost, every 5 s. Never the address. */
+    private func logStats(_ vlc: VLCMediaPlayer) {
+        guard Self.logging, let stats = vlc.media?.statistics, Date().timeIntervalSince(lastLog) >= 5 else { return }
+        lastLog = Date()
+        let line = "player: \(Int(position / 1000))s shown=\(stats.displayedPictures) lost=\(stats.lostPictures) audio lost=\(stats.lostAudioBuffers) \(Int(stats.inputBitrate * 8000)) kbit/s\n"
+        FileHandle.standardError.write(Data(line.utf8))
+    }
+
+    @ObservationIgnored private var lastLog = Date.distantPast
+    private static let logging = ProcessInfo.processInfo.environment["TELLY_PLAYER_LOG"] != nil
 }
 
+#if os(iOS)
 /** Hosts both engines' output: an AVPlayerLayer, and a plain view VLC draws into. */
 final class VideoView: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
@@ -274,3 +294,40 @@ final class VideoView: UIView {
         vlcSurface.frame = bounds
     }
 }
+#else
+/** Hosts both engines' output: an AVPlayerLayer, and a plain view VLC draws into. */
+final class VideoView: NSView {
+    let playerLayer = AVPlayerLayer()
+    let vlcSurface = NSView()
+
+    var showsApple = true {
+        didSet { vlcSurface.isHidden = showsApple }
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+        layer?.addSublayer(playerLayer)
+        vlcSurface.wantsLayer = true
+        vlcSurface.layer?.backgroundColor = NSColor.black.cgColor
+        vlcSurface.autoresizingMask = [.width, .height]
+        vlcSurface.isHidden = true
+        addSubview(vlcSurface)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        playerLayer.frame = bounds
+        CATransaction.commit()
+        vlcSurface.frame = bounds
+    }
+
+    /** Clicks and hovers go to the player's controls, not the video. */
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+#endif

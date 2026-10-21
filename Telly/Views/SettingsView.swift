@@ -60,7 +60,7 @@ struct SettingsView: View {
         .sheet(isPresented: $editing) { SetupView(existing: app.provider).environment(app) }
         .confirmationDialog("Sign out and forget your provider?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { app.signOut() }
-        } message: { Text("Your login and saved lists are removed from this iPad. My List and progress are kept.") }
+        } message: { Text("Your login and saved lists are removed from this \(Device.name). My List and progress are kept.") }
         .confirmationDialog("Clear watch progress?", isPresented: $confirmClearProgress, titleVisibility: .visible) {
             Button("Clear it all", role: .destructive) { app.clearProgress() }
         } message: { Text("Forgets where you got to in every film and episode, and empties Continue watching. My List is kept.") }
@@ -101,50 +101,50 @@ private struct SyncSection: View {
                 if showCode {
                     HStack(spacing: 20) {
                         if let qr = SyncLink.image(SyncLink.url(code: config.code, relay: config.relay, defaultRelay: AppModel.defaultRelay)) {
-                            Image(uiImage: qr).interpolation(.none).resizable().frame(width: 150, height: 150)
+                            Image(cgImage: qr).interpolation(.none).resizable().frame(width: 150, height: 150)
                                 .padding(10).background(.white, in: RoundedRectangle(cornerRadius: 10))
                         }
                         Text(SyncCrypto.formatCode(config.code)).font(.system(size: 28, weight: .semibold, design: .monospaced)).textSelection(.enabled)
                     }
                 }
                 Button(app.syncBusy ? "Syncing…" : "Sync now") { Task { await app.syncNow(force: true) } }.disabled(app.syncBusy)
-                Button("Stop syncing on this iPad", role: .destructive) { confirmStop = true }
+                Button("Stop syncing on this \(Device.name)", role: .destructive) { confirmStop = true }
             } else {
                 Text("Pick up where you left off on your other devices. Shares progress, Continue watching and My List, end-to-end encrypted. Your provider login is never shared: sign in on each device.")
                     .font(.callout).foregroundStyle(Theme.muted)
                 Button(linking && !joining ? "Starting…" : "Start syncing") { link(nil) }.disabled(linking)
+                #if os(iOS)
                 Button("Scan a QR code") { scanning = true }.disabled(linking)
+                #endif
                 Button("I have a code") { joining.toggle() }
                 if joining {
                     HStack {
                         TextField("ABCD-EFGH-JKMN-PQRS", text: $code)
-                            .textInputAutocapitalization(.characters).autocorrectionDisabled().font(.body.monospaced())
+                            .plainEntry(capitals: true).font(.body.monospaced())
                         Button(linking ? "Linking…" : "Link") { link(code) }.disabled(linking || code.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
                 LabeledContent("Relay") {
                     TextField("https://…", text: $relay).multilineTextAlignment(.trailing)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                        .plainEntry(url: true)
                 }
                 if let error { Text(error).foregroundStyle(.orange).font(.callout) }
             }
         } header: {
             Text("Sync")
         } footer: {
-            if app.sync != nil { Text("Scan the QR code with another iPad's camera, or enter the code in Settings → Sync on your Fire TV or Mac. Keep it private: anyone with it can see what you've watched.") }
+            if app.sync != nil { Text("Scan the QR code with an iPad's camera, or enter the code in Settings → Sync on your other devices. Keep it private: anyone with it can see what you've watched.") }
             else { Text("Scan the QR code your Fire TV or Mac shows under Settings → Sync → Show code. Change the relay only if you run your own.") }
         }
-        .sheet(isPresented: $scanning) {
-            QRScannerView { text in
-                if let found = SyncLink.parse(text, defaultRelay: AppModel.defaultRelay) {
-                    relay = found.relay
-                    link(found.code)
-                } else {
-                    error = "That QR code isn't a telly sync code."
-                }
+        .qrScanner(isPresented: $scanning) { text in
+            if let found = SyncLink.parse(text, defaultRelay: AppModel.defaultRelay) {
+                relay = found.relay
+                link(found.code)
+            } else {
+                error = "That QR code isn't a telly sync code."
             }
         }
-        .confirmationDialog("Stop syncing on this iPad?", isPresented: $confirmStop, titleVisibility: .visible) {
+        .confirmationDialog("Stop syncing on this \(Device.name)?", isPresented: $confirmStop, titleVisibility: .visible) {
             Button("Stop syncing", role: .destructive) { Task { await app.stopSync(); showCode = true } }
         } message: { Text("Your other devices keep syncing with each other.") }
     }

@@ -39,7 +39,7 @@ struct RootView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 22).padding(.top, 4).padding(.bottom, 12)
                     }
-                    .navigationBarTitleDisplayMode(.inline)
+                    .inlineTitle()
                     .safeAreaInset(edge: .bottom) {
                         if app.refreshing {
                             Label("Updating your lists…", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(Theme.muted).padding()
@@ -57,10 +57,20 @@ struct RootView: View {
             }
         }
         .background(Theme.background)
+        #if os(iOS)
         .fullScreenCover(item: $app.player) { request in
             PlayerView(request: request).environment(app)
         }
-        .alert("Link this iPad for sync?", isPresented: Binding(get: { app.pendingLink != nil && app.provider != nil }, set: { if !$0 { app.pendingLink = nil } })) {
+        #else
+        // On a Mac the player fills the window, title bar and all, and can go full screen (F, or double-click).
+        .toolbar(app.player == nil ? .automatic : .hidden, for: .windowToolbar)
+        .overlay {
+            if let request = app.player {
+                PlayerView(request: request).environment(app).id(request.id).ignoresSafeArea()
+            }
+        }
+        #endif
+        .alert("Link this \(Device.name) for sync?", isPresented: Binding(get: { app.pendingLink != nil && app.provider != nil }, set: { if !$0 { app.pendingLink = nil } })) {
             Button("Link") {
                 Task {
                     do { try await app.confirmPendingLink() } catch { linkError = error.localizedDescription }
@@ -70,7 +80,7 @@ struct RootView: View {
         } message: {
             Text(app.sync == nil
                  ? "Your progress, Continue watching and My List will be shared with the device that showed this code, end-to-end encrypted."
-                 : "This replaces the devices this iPad syncs with now.")
+                 : "This replaces the devices this \(Device.name) syncs with now.")
         }
         .alert("Couldn't link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}

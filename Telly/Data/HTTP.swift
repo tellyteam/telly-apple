@@ -13,7 +13,7 @@ final class HTTP: @unchecked Sendable {
     let session: URLSession = {
         let c = URLSessionConfiguration.default
         c.timeoutIntervalForRequest = 30
-        c.httpAdditionalHeaders = ["User-Agent": "telly-ipad/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1")"]
+        c.httpAdditionalHeaders = ["User-Agent": "\(Device.userAgent)/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1")"]
         c.urlCache = nil
         return URLSession(configuration: c)
     }()

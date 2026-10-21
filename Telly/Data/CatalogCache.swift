@@ -2,14 +2,13 @@ import CryptoKit
 import Foundation
 
 /**
- * Saved catalogues: the provider's raw answers, kept on the iPad so telly opens instantly and
+ * Saved catalogues: the provider's raw answers, kept on the device so telly opens instantly and
  * refreshes in the background. Scoped by a hash of server and username, so switching providers
- * never mixes lists. Stored with complete file protection: unreadable while the iPad is locked.
+ * never mixes lists. On iPad, stored with complete file protection: unreadable while it's locked.
  */
 enum CatalogCache {
     private static var dir: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("catalog", isDirectory: true)
+        Device.dataDirectory.appendingPathComponent("catalog", isDirectory: true)
     }
 
     static func scope(_ parts: String...) -> String {
@@ -27,7 +26,7 @@ enum CatalogCache {
     static func write(_ scope: String, _ name: String, _ data: Data) {
         let url = file(scope, name)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: url, options: [.atomic, .completeFileProtection])
+        try? data.write(to: url, options: [.atomic, Device.fileProtection])
     }
 
     static func clearAll() {
