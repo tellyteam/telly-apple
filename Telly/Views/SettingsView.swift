@@ -63,6 +63,7 @@ struct SettingsView: View {
                 Toggle("Play the next episode automatically", isOn: $app.settings.autoNext)
                     .onChange(of: app.settings.autoNext) { app.saveSettings() }
             }
+            if app.provider?.isXtream == true { DownloadSettingsSection() }
             if app.syncShown { SyncSection() }
             SwiftUI.Section {
                 Button(app.refreshing ? "Refreshing…" : "Refresh lists") { Task { await app.refresh() } }.disabled(app.refreshing)
@@ -207,6 +208,36 @@ private struct SyncSection: View {
                 self.error = error.localizedDescription
             }
             linking = false
+        }
+    }
+}
+
+/** When downloads run, and what happens to them. */
+private struct DownloadSettingsSection: View {
+    var body: some View {
+        @Bindable var downloads = Downloads.shared
+        SwiftUI.Section {
+            Toggle("Download overnight", isOn: $downloads.settings.overnight)
+            if downloads.settings.overnight {
+                Picker("From", selection: $downloads.settings.startHour) { ForEach(0..<24, id: \.self) { Text(hour($0)).tag($0) } }
+                Picker("Until", selection: $downloads.settings.endHour) { ForEach(0..<24, id: \.self) { Text(hour($0)).tag($0) } }
+            }
+            #if os(iOS)
+            Toggle("Wi-Fi only", isOn: $downloads.settings.wifiOnly)
+            #endif
+            Toggle("Delete episodes once watched", isOn: $downloads.settings.deleteWatched)
+        } header: {
+            Text("Downloads")
+        } footer: {
+            #if os(iOS)
+            Text(downloads.settings.overnight
+                 ? "Downloads wait for the overnight window, so they never compete with watching. iPadOS picks the exact time, usually while the iPad is on Wi-Fi; they carry on with telly closed. Watching anything pauses them."
+                 : "Downloads start straight away. Watching anything pauses them.")
+            #else
+            Text(downloads.settings.overnight
+                 ? "Downloads wait for the overnight window, so they never compete with watching. Leave telly open (it can be in the background): the Mac stays awake while downloading. Watching anything pauses them."
+                 : "Downloads start straight away. Watching anything pauses them.")
+            #endif
         }
     }
 }

@@ -5,11 +5,20 @@ struct TellyApp: App {
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var phase
 
-    #if os(macOS)
-    init() {
-        Updates.start()
-    }
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     #endif
+
+    init() {
+        // Downloads start with the app, so ones the system kept going reconnect (and, on iPad,
+        // so an overnight wake finds its handler).
+        _ = Downloads.shared
+        #if os(iOS)
+        Downloads.registerWake()
+        #else
+        Updates.start()
+        #endif
+    }
 
     var body: some Scene {
         #if os(iOS)
@@ -54,6 +63,9 @@ struct TellyCommands: Commands {
                 Button("Series") { go(.series) }.keyboardShortcut("4")
             }
             Button("My List") { go(.myList) }.keyboardShortcut("5")
+            if model.provider?.isXtream == true {
+                Button("Downloads") { go(.downloads) }.keyboardShortcut("6")
+            }
             Divider()
             Button(model.refreshing ? "Refreshing Lists…" : "Refresh Lists") { Task { await model.refresh() } }
                 .keyboardShortcut("r")
@@ -65,6 +77,16 @@ struct TellyCommands: Commands {
     private func go(_ page: Page) {
         guard model.provider != nil, model.player == nil else { return }
         model.page = page
+    }
+}
+#endif
+
+#if os(iOS)
+/** Hands iOS's "background downloads have news" call to the downloads session. */
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+        guard identifier == Downloads.sessionId else { return completionHandler() }
+        Downloads.shared.backgroundEventsDone = completionHandler
     }
 }
 #endif

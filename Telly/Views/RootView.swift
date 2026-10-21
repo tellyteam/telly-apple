@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum Page: String, CaseIterable, Identifiable {
-    case home = "Home", search = "Search", live = "Live TV", films = "Films", series = "Series", myList = "My List", settings = "Settings"
+    case home = "Home", search = "Search", live = "Live TV", films = "Films", series = "Series", myList = "My List", downloads = "Downloads", settings = "Settings"
     var id: String { rawValue }
     var icon: String {
         switch self {
@@ -11,6 +11,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .films: return "film"
         case .series: return "rectangle.stack"
         case .myList: return "heart"
+        case .downloads: return "arrow.down.circle"
         case .settings: return "gearshape"
         }
     }
@@ -58,6 +59,14 @@ struct RootView: View {
                     }
                         .id(app.page)
                 }
+                #if os(macOS)
+                // Under the player, the pages take no clicks, keys or focus: AppKit-backed lists
+                // would otherwise catch them before the player does.
+                .allowsHitTesting(app.player == nil)
+                .disabled(app.player != nil)
+                .opacity(app.player == nil ? 1 : 0)
+                .accessibilityHidden(app.player != nil)
+                #endif
             }
         }
         .background(Theme.background)
@@ -112,7 +121,8 @@ struct RootView: View {
 
     /** Films and Series only for Xtream providers; M3U playlists are live channels only. */
     private var sections: [Page] {
-        app.provider?.isXtream == true ? Page.allCases : Page.allCases.filter { $0 != .films && $0 != .series }
+        // Films and series (and so downloads) only come from Xtream providers.
+        app.provider?.isXtream == true ? Page.allCases : Page.allCases.filter { $0 != .films && $0 != .series && $0 != .downloads }
     }
 
     @ViewBuilder private func page(_ s: Page) -> some View {
@@ -123,6 +133,7 @@ struct RootView: View {
         case .films: FilmsView()
         case .series: SeriesListView()
         case .myList: MyListView()
+        case .downloads: DownloadsView()
         case .settings: SettingsView()
         }
     }

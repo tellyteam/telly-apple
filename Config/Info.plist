@@ -23,10 +23,16 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>telly uses the camera only to read the QR code another device shows when you link them for sync.</string>
-	<!-- Keeps sound playing for picture in picture. -->
+	<!-- Keeps sound playing for picture in picture; "processing" lets iOS wake telly overnight to
+	     start downloads (Downloads.swift). -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>io.github.tellyteam.telly.downloads.overnight</string>
 	</array>
 </dict>
 </plist>

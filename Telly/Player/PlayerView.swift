@@ -61,7 +61,8 @@ struct PlayerView: View {
             index = request.index
             Device.keepAwake(true)
             #if os(macOS)
-            focused = true
+            // Once the pages underneath have let go of the keyboard.
+            DispatchQueue.main.async { focused = true }
             #endif
             start(at: request.startAt ?? (request.live ? 0 : Playback.resumePosition(app.progressOf(item.url))))
             scheduleHide()
@@ -242,7 +243,9 @@ struct PlayerView: View {
         nextCountdown = nil
         promptDeadline = nil
         dismissedPrompt = false
-        player.load(item.url, startAt: ms, allowCleartext: app.provider?.allowCleartext ?? false)
+        // A downloaded film or episode plays from the device.
+        let source = Downloads.shared.localURL(app.activeId, item.url)?.absoluteString ?? item.url
+        player.load(source, startAt: ms, allowCleartext: app.provider?.allowCleartext ?? false)
     }
 
     /** Twice a second: save every 10 s, and offer the next episode in the credits. */

@@ -69,6 +69,7 @@ final class AppModel {
     var films: [ItemGroup<Channel>]?
     var series: [ItemGroup<Series>]?
     var refreshing = false
+    @ObservationIgnored private var refreshingFor: Provider?
     var loadError: String?
     var meta = Meta()
 
@@ -187,8 +188,11 @@ final class AppModel {
     }
 
     func refresh() async {
-        guard let p = provider, !refreshing else { return }
+        guard let p = provider, refreshingFor != p else { return }
+        // A refresh for the provider switched away from may still be running; this one replaces it.
         refreshing = true
+        refreshingFor = p
+        defer { if refreshingFor == p { refreshing = false; refreshingFor = nil } }
         loadError = nil
         async let l = Result.of { try await Repo.liveGroups(p, .network) }
         async let f = Result.of { try await Repo.filmGroups(p, .network) }
@@ -204,7 +208,6 @@ final class AppModel {
             meta.updatedAt = nowMs()
             Store.write("meta", meta)
         }
-        refreshing = false
     }
 
     // MARK: Provider
@@ -225,6 +228,8 @@ final class AppModel {
         var list = providers
         let saved: SavedProvider
         if let editing, let i = list.firstIndex(where: { $0.id == editing }) {
+            // A new server or login means new lists: the old ones go.
+            if list[i].provider.syncIdentity != p.syncIdentity { CatalogCache.clear(for: list[i].provider) }
             list[i].provider = p
             saved = list[i]
         } else {
@@ -249,6 +254,7 @@ final class AppModel {
         // Its history holds stream URLs, which carry the login.
         Records.delete(id)
         CatalogCache.clear(for: gone.provider)
+        Downloads.shared.removeAll(providerId: id)
         guard id == activeId else { return }
         if let next = providers.first {
             page = .home
@@ -361,7 +367,9 @@ final class AppModel {
 
     func saveProgress(_ url: String, position: Double, duration: Double) {
         guard duration > 0, duration.isFinite else { return }
-        progress[Playback.progressKey(url)] = Progress(position: min(max(position, 0), duration).rounded(), duration: duration.rounded(), at: nowMs())
+        let p = Progress(position: min(max(position, 0), duration).rounded(), duration: duration.rounded(), at: nowMs())
+        progress[Playback.progressKey(url)] = p
+        if p.finished { Downloads.shared.watched(activeId, url) }
         keep("progress", progress)
     }
 
@@ -373,6 +381,7 @@ final class AppModel {
     func seriesHistory(_ seriesId: String) -> LastWatched? { history.first { $0.seriesId == seriesId } }
 
     func play(_ req: PlayRequest) {
+        Downloads.shared.watching = true
         player = req
         recordWatching(req, index: req.index)
     }
@@ -412,6 +421,7 @@ final class AppModel {
     /** Leaving the player shares what was watched. */
     func closePlayer() {
         player = nil
+        Downloads.shared.watching = false
         Task { await syncNow(force: true) }
     }
 

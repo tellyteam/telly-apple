@@ -27,6 +27,7 @@ struct FilmDetailView: View {
                             let fav = app.isFavourite(.film, film.id)
                             Button { app.toggleFavourite(.film, film.id) } label: { Label(fav ? "In My List" : "My List", systemImage: fav ? "checkmark" : "plus") }
                                 .buttonStyle(.bordered)
+                            DownloadButton(item: film, kind: .film).buttonStyle(.bordered)
                         }
                         if let plot = details?.plot { Text(plot).frame(maxWidth: 640, alignment: .leading) }
                         if let cast = details?.cast { Text("Cast: \(cast)").font(.callout).foregroundStyle(Theme.muted).frame(maxWidth: 640, alignment: .leading) }
@@ -85,16 +86,28 @@ struct SeriesDetailView: View {
                 }
                 .padding(.horizontal, 28)
                 if let data {
-                    if data.seasons.count > 1 {
-                        Picker("Season", selection: $season) {
-                            ForEach(data.seasons.indices, id: \.self) { Text(data.seasons[$0].name).tag($0) }
+                    HStack(spacing: 16) {
+                        if data.seasons.count > 1 {
+                            Picker("Season", selection: $season) {
+                                ForEach(data.seasons.indices, id: \.self) { Text(data.seasons[$0].name).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
                         }
-                        .pickerStyle(.segmented).padding(.horizontal, 28)
+                        if data.seasons.indices.contains(season), let id = app.activeId,
+                           data.seasons[season].episodes.contains(where: { Downloads.canDownload($0.url) && Downloads.shared.item(id, $0.url) == nil }) {
+                            Button {
+                                for ep in data.seasons[season].episodes {
+                                    Downloads.shared.add(providerId: id, ep, kind: .episode, show: series.name, seriesId: series.id, art: series.cover)
+                                }
+                            } label: { Label("Download season", systemImage: "arrow.down.circle") }
+                            .buttonStyle(.bordered)
+                        }
                     }
+                    .padding(.horizontal, 28)
                     if data.seasons.indices.contains(season) {
                         LazyVStack(spacing: 2) {
                             ForEach(Array(data.seasons[season].episodes.enumerated()), id: \.element.id) { i, ep in
-                                EpisodeRow(episode: ep) { app.playEpisode(series, data.seasons[season].episodes, i) }
+                                EpisodeRow(episode: ep, series: series) { app.playEpisode(series, data.seasons[season].episodes, i) }
                             }
                         }
                         .padding(.horizontal, 20)
@@ -142,6 +155,7 @@ struct SeriesDetailView: View {
 private struct EpisodeRow: View {
     @Environment(AppModel.self) private var app
     let episode: Channel
+    let series: Series
     let play: () -> Void
 
     var body: some View {
@@ -168,5 +182,10 @@ private struct EpisodeRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .topTrailing) {
+            DownloadButton(item: episode, kind: .episode, show: series.name, seriesId: series.id, art: series.cover, compact: true)
+                .buttonStyle(.borderless)
+                .padding(8)
+        }
     }
 }
