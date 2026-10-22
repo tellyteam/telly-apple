@@ -142,13 +142,27 @@ struct DownloadsView: View {
         .padding(.vertical, 4)
     }
 
-    /** Plays a download: a film on its own, an episode with its season (from the saved lists). */
+    /**
+     * Plays a download: a film on its own; an episode as part of its season (from the saved lists),
+     * so the next-episode prompt and autoplay work as when streaming (PLAYBACK.md, Downloads). The
+     * player plays each episode from its download when there is one.
+     */
     private func play(_ d: DownloadItem) {
         let c = Channel(id: d.itemId ?? d.id, name: d.title, group: d.show ?? "", logo: d.art, url: d.url)
-        if d.kind == .episode, let sid = d.seriesId, let s = app.seriesItem(sid) {
-            app.playEpisode(s, [c], 0)
-        } else {
+        guard d.kind == .episode, let sid = d.seriesId, let s = app.seriesItem(sid) else {
             app.playFilm(c)
+            return
+        }
+        Task {
+            if let p = app.provider, let data = try? await Repo.seriesData(p, s, .cache) {
+                for season in data.seasons {
+                    if let i = season.episodes.firstIndex(where: { $0.id == c.id || $0.url == c.url }) {
+                        app.playEpisode(s, season.episodes, i)
+                        return
+                    }
+                }
+            }
+            app.playEpisode(s, [c], 0)
         }
     }
 

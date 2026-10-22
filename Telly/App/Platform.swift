@@ -1,3 +1,4 @@
+import Network
 import SwiftUI
 #if os(iOS)
 import UIKit
@@ -131,5 +132,20 @@ extension Image {
     /** An image from Core Graphics, at the given scale. */
     init(cgImage: CGImage) {
         self.init(decorative: cgImage, scale: 1)
+    }
+}
+
+/** Whether there's a connection now: offline, what plays next is the next downloaded item. */
+@MainActor @Observable
+final class Connectivity {
+    static let shared = Connectivity()
+    private(set) var online = true
+    @ObservationIgnored private let monitor = NWPathMonitor()
+
+    private init() {
+        monitor.pathUpdateHandler = { path in
+            Task { @MainActor in Connectivity.shared.online = path.status == .satisfied }
+        }
+        monitor.start(queue: .main)
     }
 }

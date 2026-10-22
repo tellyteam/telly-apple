@@ -121,7 +121,7 @@ private struct ContinueCard: View {
             LandscapeCard(title: entry.isFilm || entry.live ? item.name : entry.heading,
                           subtitle: entry.isFilm ? "Film" : entry.live ? item.group : "\(item.group) · \(item.name)",
                           image: entry.live ? item.logo : (entry.isFilm ? item.logo : item.logo ?? entry.art),
-                          badge: entry.live ? "Live" : entry.isFilm ? "Film" : nil,
+                          badge: entry.live ? "Live" : entry.isFilm ? "Film" : entry.newEpisodes == true ? "New episodes" : nil,
                           progress: entry.live ? nil : app.progressOf(item.url).map(\.fraction))
         }
         .buttonStyle(.plain)

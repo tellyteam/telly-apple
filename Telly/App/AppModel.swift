@@ -220,6 +220,7 @@ final class AppModel {
             meta.updatedAt = nowMs()
             Store.write("meta", meta)
         }
+        await checkForNewEpisodes()
     }
 
     // MARK: Provider
@@ -451,9 +452,9 @@ final class AppModel {
         keep("progress", progress)
     }
 
-    /** Continue watching: history without films that have been watched to the end. */
+    /** Continue watching: history with something left to watch (PLAYBACK.md). */
     var continueWatching: [LastWatched] {
-        history.filter { !($0.isFilm && progressOf($0.current.url)?.finished == true) }
+        history.filter { $0.shownInContinue(progressOf) }
     }
 
     func seriesHistory(_ seriesId: String) -> LastWatched? { history.first { $0.seriesId == seriesId } }
@@ -496,11 +497,45 @@ final class AppModel {
         Task { await syncNow(force: true) }
     }
 
-    /** Leaving the player shares what was watched. */
+    /** Leaving the player shares what was watched, and looks for new episodes of anything finished. */
     func closePlayer() {
         player = nil
         Downloads.shared.watching = false
-        Task { await syncNow(force: true) }
+        Task {
+            await syncNow(force: true)
+            await checkForNewEpisodes()
+        }
+    }
+
+    // MARK: New episodes
+
+    @ObservationIgnored private var checkingEpisodes = false
+
+    /**
+     * Brings back series watched to the end of what they had, once the provider adds more: at the
+     * next episode, marked "New episodes" when they arrived after it was watched. Each series is
+     * only fetched again after the provider has changed it (PLAYBACK.md).
+     */
+    func checkForNewEpisodes() async {
+        guard let p = provider, let id = activeId, !checkingEpisodes, series != nil else { return }
+        checkingEpisodes = true
+        defer { checkingEpisodes = false }
+        var checks = Store.read("episode-checks-\(id)", as: [String: NewEpisodes.Check].self) ?? [:]
+        for entry in history where !entry.live && !entry.isFilm && !entry.shownInContinue(progressOf) {
+            guard let sid = entry.seriesId, let show = seriesById[sid],
+                  NewEpisodes.due(show, checked: checks[sid], now: nowMs()),
+                  let data = try? await Repo.seriesData(p, show, .network), provider == p else { continue }
+            checks[sid] = NewEpisodes.Check(added: show.added, at: nowMs())
+            guard let (season, i) = NewEpisodes.after(data.seasons, entry.current.id) else { continue }
+            // Never moved to the front: Continue watching leads with what was last watched.
+            var back = entry
+            back.items = season.episodes
+            back.index = i
+            back.newEpisodes = NewEpisodes.isNew(show, watchedAt: entry.at)
+            history = history.map { $0.slot == entry.slot ? back : $0 }
+            keep("history", history)
+        }
+        Store.write("episode-checks-\(id)", checks)
     }
 
     func saveSettings() { Store.write("settings", settings) }

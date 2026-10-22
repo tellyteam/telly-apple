@@ -1,0 +1,47 @@
+{
+  "about": "PLAYBACK.md's rules as cases every telly app's unit tests run. Copy this file verbatim into each app; change it here first.",
+  "prompt": [
+    { "name": "a minute left shows 60", "durationMs": 2700000, "positionMs": 2640000, "hasNext": true, "autoNext": true, "dismissed": false, "live": false, "seconds": 60 },
+    { "name": "just over a minute left shows nothing", "durationMs": 2700000, "positionMs": 2639999, "hasNext": true, "autoNext": true, "dismissed": false, "live": false, "seconds": null },
+    { "name": "rounds up", "durationMs": 2700000, "positionMs": 2690500, "hasNext": true, "autoNext": true, "dismissed": false, "live": false, "seconds": 10 },
+    { "name": "always the last minute, even with longer credits", "durationMs": 2700000, "positionMs": 2600000, "hasNext": true, "autoNext": true, "dismissed": false, "live": false, "seconds": null },
+    { "name": "a long episode at 50 s left", "durationMs": 2700000, "positionMs": 2650000, "hasNext": true, "autoNext": true, "dismissed": false, "live": false, "seconds": 50 },
+    { "name": "at the very end, nothing", "durationMs": 2700000, "positionMs": 2700000, "hasNext": true, "autoNext": true, "dismissed": false, "live": false, "seconds": null },
+    { "name": "nothing next", "durationMs": 2700000, "positionMs": 2680000, "hasNext": false, "autoNext": true, "dismissed": false, "live": false, "seconds": null },
+    { "name": "autoplay off", "durationMs": 2700000, "positionMs": 2680000, "hasNext": true, "autoNext": false, "dismissed": false, "live": false, "seconds": null },
+    { "name": "dismissed", "durationMs": 2700000, "positionMs": 2680000, "hasNext": true, "autoNext": true, "dismissed": true, "live": false, "seconds": null },
+    { "name": "live TV", "durationMs": 2700000, "positionMs": 2680000, "hasNext": true, "autoNext": true, "dismissed": false, "live": true, "seconds": null },
+    { "name": "unknown duration", "durationMs": 0, "positionMs": 0, "hasNext": true, "autoNext": true, "dismissed": false, "live": false, "seconds": null }
+  ],
+  "atEnd": [
+    { "name": "plays the next", "hasNext": true, "autoNext": true, "dismissed": false, "advance": true },
+    { "name": "nothing next", "hasNext": false, "autoNext": true, "dismissed": false, "advance": false },
+    { "name": "autoplay off", "hasNext": true, "autoNext": false, "dismissed": false, "advance": false },
+    { "name": "dismissed", "hasNext": true, "autoNext": true, "dismissed": true, "advance": false }
+  ],
+  "watched": [
+    { "name": "45 min: inside the last 5%", "durationMs": 2700000, "positionMs": 2565001, "watched": true },
+    { "name": "45 min: exactly 5% left", "durationMs": 2700000, "positionMs": 2565000, "watched": false },
+    { "name": "20 min: inside the last minute", "durationMs": 1200000, "positionMs": 1140001, "watched": true },
+    { "name": "20 min: exactly a minute left", "durationMs": 1200000, "positionMs": 1140000, "watched": false }
+  ],
+  "resume": [
+    { "name": "barely started", "durationMs": 2700000, "positionMs": 14999, "startAt": 0 },
+    { "name": "part way", "durationMs": 2700000, "positionMs": 15000, "startAt": 15000 },
+    { "name": "watched", "durationMs": 2700000, "positionMs": 2600000, "startAt": 0 },
+    { "name": "never played", "durationMs": null, "positionMs": null, "startAt": 0 }
+  ],
+  "continue": [
+    { "name": "left in the credits: the next episode", "items": 3, "index": 0, "watched": [0], "film": false, "continueIndex": 1, "shown": true },
+    { "name": "part way: the same episode", "items": 3, "index": 1, "watched": [0], "film": false, "continueIndex": 1, "shown": true },
+    { "name": "the last episode watched: leaves the row", "items": 3, "index": 2, "watched": [0, 1, 2], "film": false, "continueIndex": 2, "shown": false },
+    { "name": "a watched film: leaves the row", "items": 1, "index": 0, "watched": [0], "film": true, "continueIndex": 0, "shown": false },
+    { "name": "a film part way", "items": 1, "index": 0, "watched": [], "film": true, "continueIndex": 0, "shown": true }
+  ],
+  "nextPlayable": [
+    { "name": "online: simply the next", "items": 4, "index": 0, "downloaded": [0, 2], "online": true, "next": 1 },
+    { "name": "offline: the next downloaded", "items": 4, "index": 0, "downloaded": [0, 2], "online": false, "next": 2 },
+    { "name": "offline: none downloaded after", "items": 4, "index": 2, "downloaded": [0, 2], "online": false, "next": null },
+    { "name": "the last item", "items": 4, "index": 3, "downloaded": [3], "online": true, "next": null }
+  ]
+}

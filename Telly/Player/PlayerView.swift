@@ -13,13 +13,21 @@ struct PlayerView: View {
     @State private var lastSaved = Date()
     @State private var nextCountdown: Int?
     @State private var dismissedPrompt = false
-    @State private var promptDeadline: Date?
+    /** Offline with nothing downloaded after this: said at the end instead of playing on. */
+    @State private var endNote: String?
     #if os(macOS)
     @FocusState private var focused: Bool
     #endif
 
     private var item: Channel { request.items[min(max(index, 0), request.items.count - 1)] }
-    private var hasNext: Bool { index + 1 < request.items.count }
+    /** Live: the next channel. Otherwise what plays next (PLAYBACK.md): offline, the next downloaded item. */
+    private var nextIndex: Int? {
+        if request.live { return index + 1 < request.items.count ? index + 1 : nil }
+        return PlaybackRules.nextPlayable(index, count: request.items.count,
+                                          downloaded: { Downloads.shared.localURL(app.activeId, request.items[$0].url) != nil },
+                                          online: Connectivity.shared.online)
+    }
+    private var hasNext: Bool { nextIndex != nil }
 
     var body: some View {
         ZStack {
@@ -45,7 +53,14 @@ struct PlayerView: View {
         }
         // Overlays rather than ZStack siblings, so they always sit above the video's UIKit layer.
         .overlay { if controlsVisible { controls.transition(.opacity) } }
-        .overlay { if let n = nextCountdown, hasNext { nextPrompt(n) } }
+        // The small prompt stays out of the way: not while the controls show.
+        .overlay { if let n = nextCountdown, hasNext, !controlsVisible { nextPrompt(n) } }
+        .overlay(alignment: .top) {
+            if let endNote, controlsVisible {
+                Text(endNote).font(.callout).padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(.black.opacity(0.6), in: Capsule()).padding(.top, 70)
+            }
+        }
         .playerChrome(visible: controlsVisible)
         #if os(macOS)
         .onContinuousHover { phase in
@@ -162,19 +177,35 @@ struct PlayerView: View {
         .accessibilityLabel(label)
     }
 
+    /** PLAYBACK.md's prompt: small, bottom-right; a tap (or Return) plays next now, ✕ (or Esc) cancels it for this item. */
     private func nextPrompt(_ n: Int) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Next episode in \(n)").font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
-            Text(request.items[index + 1].name).font(.headline).lineLimit(1)
-            HStack {
-                Button("Play now") { advance(markWatched: true) }.buttonStyle(.borderedProminent)
-                Button("Cancel") { nextCountdown = nil; dismissedPrompt = true }.buttonStyle(.bordered)
+        HStack(spacing: 6) {
+            Button { advance(markWatched: true) } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("▶ Next in \(n)s").font(.caption.weight(.bold))
+                    if let next = nextIndex { Text(request.items[next].name).font(.caption2).lineLimit(1) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            Button { dismissPrompt() } label: { Image(systemName: "xmark").font(.caption2.weight(.bold)).padding(6) }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel the next episode")
         }
-        .padding(18).frame(width: 340, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .frame(width: 220)
+        .background(Color(red: 0.06, green: 0.08, blue: 0.09).opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.accent, lineWidth: 1))
+        .opacity(0.9)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        .padding(28).padding(.bottom, 60)
+        .padding(16)
+    }
+
+    private func dismissPrompt() {
+        nextCountdown = nil
+        dismissedPrompt = true
     }
 
     private var title: String { request.live || request.heading == Playback.film ? item.name : request.heading }
@@ -226,6 +257,12 @@ struct PlayerView: View {
         case .rightArrow where !request.live: player.skip(10)
         case .upArrow where request.live: zap(-1)
         case .downArrow where request.live: zap(1)
+        case .return where nextCountdown != nil && !controlsVisible:
+            advance(markWatched: true)
+            return .handled
+        case .escape where nextCountdown != nil && !controlsVisible:
+            dismissPrompt()
+            return .handled
         case .escape:
             if NSApp.keyWindow?.styleMask.contains(.fullScreen) == true { toggleFullScreen() } else { close() }
         default:
@@ -241,28 +278,19 @@ struct PlayerView: View {
 
     private func start(at ms: Double) {
         nextCountdown = nil
-        promptDeadline = nil
         dismissedPrompt = false
+        endNote = nil
         // A downloaded film or episode plays from the device.
         let source = Downloads.shared.localURL(app.activeId, item.url)?.absoluteString ?? item.url
         player.load(source, startAt: ms, allowCleartext: app.provider?.allowCleartext ?? false)
     }
 
-    /** Twice a second: save every 10 s, and offer the next episode in the credits. */
+    /** Twice a second: save every 10 s, and count down to the next episode in the last minute. */
     private func tick() {
         guard !request.live, player.duration > 0 else { return }
         if Date().timeIntervalSince(lastSaved) >= 10 { save() }
-        let inCredits = player.duration - player.position < Playback.endMargin(player.duration)
-        if hasNext && app.settings.autoNext && !dismissedPrompt && inCredits {
-            // A 15-second countdown from when the credits start.
-            let deadline = promptDeadline ?? Date().addingTimeInterval(15)
-            promptDeadline = deadline
-            nextCountdown = max(0, Int(deadline.timeIntervalSinceNow.rounded(.up)))
-            if nextCountdown == 0 { advance(markWatched: true) }
-        } else if !inCredits {
-            nextCountdown = nil
-            promptDeadline = nil
-        }
+        nextCountdown = PlaybackRules.promptSeconds(duration: player.duration, position: player.position, hasNext: hasNext,
+                                                    autoNext: app.settings.autoNext, dismissed: dismissedPrompt, live: request.live)
     }
 
     private func save() {
@@ -274,13 +302,18 @@ struct PlayerView: View {
     private func finished() {
         guard !request.live else { return }
         app.saveProgress(item.url, position: player.duration, duration: player.duration)
-        if hasNext && app.settings.autoNext { advance(markWatched: false) } else { controlsVisible = true }
+        if PlaybackRules.advanceAtEnd(hasNext: hasNext, autoNext: app.settings.autoNext, dismissed: dismissedPrompt) {
+            advance(markWatched: false)
+            return
+        }
+        if index + 1 < request.items.count && !hasNext { endNote = "The next episode isn't downloaded, and there's no connection." }
+        controlsVisible = true
     }
 
     private func advance(markWatched: Bool) {
-        guard hasNext else { return }
+        guard let next = nextIndex else { return }
         if markWatched && player.duration > 0 { app.saveProgress(item.url, position: player.duration, duration: player.duration) } else { save() }
-        index += 1
+        index = next
         app.recordWatching(request, index: index)
         start(at: Playback.resumePosition(app.progressOf(item.url)))
     }
