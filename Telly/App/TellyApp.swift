@@ -10,14 +10,15 @@ struct TellyApp: App {
     #endif
 
     init() {
-        // Downloads start with the app, so ones the system kept going reconnect (and, on iPad,
-        // so an overnight wake finds its handler).
-        _ = Downloads.shared
+        // On iPad the overnight wake is registered first: iOS stops an app that asks to be woken
+        // for a task it hasn't registered yet.
         #if os(iOS)
         Downloads.registerWake()
         #else
         Updates.start()
         #endif
+        // Downloads start with the app, so ones the system kept going reconnect.
+        _ = Downloads.shared
     }
 
     var body: some Scene {

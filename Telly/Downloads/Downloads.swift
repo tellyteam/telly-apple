@@ -69,13 +69,16 @@ final class Downloads {
     static let wakeTaskId = "io.github.tellyteam.telly.downloads.overnight"
 
     private(set) var items: [DownloadItem] = []
-    var settings = DownloadSettings() { didSet { saveSettings(); reschedule(); pump() } }
+    var settings = DownloadSettings() { didSet { guard started else { return }; saveSettings(); reschedule(); pump() } }
     /** "Start now": downloads run outside the window until the queue is empty. */
     private(set) var startedNow = false
     /** Set while something plays; downloads wait. */
-    var watching = false { didSet { watching ? pauseCurrent(to: .queued) : pump() } }
+    var watching = false { didSet { guard started else { return }; watching ? pauseCurrent(to: .queued) : pump() } }
 
     @ObservationIgnored private var session: URLSession!
+    /** Set once [init] is done. (@Observable runs didSet even in init, before the session exists,
+     *  and on iPad before the overnight task is registered, which iOS treats as a crash.) */
+    @ObservationIgnored private var started = false
     @ObservationIgnored private let delegate = SessionDelegate()
     @ObservationIgnored private var task: URLSessionDownloadTask?
     @ObservationIgnored private var timer: Timer?
@@ -116,6 +119,7 @@ final class Downloads {
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
             MainActor.assumeIsolated { Downloads.shared.tick() }
         }
+        started = true
     }
 
     // MARK: What's downloaded
