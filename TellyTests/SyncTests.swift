@@ -209,4 +209,53 @@ final class SyncLinkTests: XCTestCase {
         XCTAssertEqual(Array(m.sections.keys), ["aaaaaaaaaaaaaaaa"])
         XCTAssertEqual(m.sections["aaaaaaaaaaaaaaaa"]?.progress["movie/1.mkv"]?.position, 6)
     }
+
+    // MARK: Logins (opt-in)
+
+    func testLoginsBoxMatchesTheSharedVector() throws {
+        let keys = SyncCrypto.deriveKeys("0123456789ABCDEF")
+        let sealed = try SyncCrypto.sealLogins(keys, device: "00112233aabbccdd", "{}", nonce: Array(0..<12))
+        XCTAssertEqual(SyncCrypto.hex(sealed), "01000102030405060708090a0bb8e5248c11cad1416ea6d5dfb19164d7d67c")
+        XCTAssertEqual(SyncCrypto.openLogins(keys, device: "00112233aabbccdd", sealed), "{}")
+        // Not with the parcel key, and not as another device's.
+        XCTAssertNil(SyncCrypto.open(keys, device: "00112233aabbccdd", sealed))
+        XCTAssertNil(SyncCrypto.openLogins(keys, device: "aabbccddeeff0011", sealed))
+    }
+
+    func testLoginsTravelSealedAndChecked() throws {
+        let keys = SyncCrypto.deriveKeys("0123456789ABCDEF")
+        let home = Provider.xtream(name: "Home", server: " Example.com:8080/ ", username: "me", password: "pw1", allowCleartext: true)
+        let tag = SyncCrypto.providerTag(keys, identity: home.syncIdentity)
+        let gone = "0123456789abcdef"
+        let bundle = SyncBundle(at: 50, logins: [tag: SharedLogin(at: 40, provider: home), gone: SharedLogin(at: 30, provider: nil)])
+        let text = bundle.json(keys: keys, device: "00112233aabbccdd")
+        XCTAssertFalse(text.contains("pw1"), "the password never appears outside the logins box")
+        let back = try XCTUnwrap(SyncBundle.parse(text, current: tag, keys: keys, device: "00112233aabbccdd"))
+        XCTAssertEqual(back.logins?[tag], SharedLogin(at: 40, provider: home))
+        XCTAssertEqual(back.logins?[gone], SharedLogin(at: 30, provider: nil))
+        // Without the keys, no logins.
+        XCTAssertNil(SyncBundle.parse(text, current: tag)?.logins)
+    }
+
+    func testDropsALoginFiledUnderAnotherTag() {
+        let keys = SyncCrypto.deriveKeys("0123456789ABCDEF")
+        let text = #"{"aaaaaaaaaaaaaaaa":{"at":1,"kind":"m3u","name":"x","url":"https://example.com/list.m3u","allowCleartext":false}}"#
+        XCTAssertTrue(SharedLogin.parse(text, keys: keys).isEmpty)
+        let right = #"{"ff2163ea5d23fc01":{"at":1,"kind":"m3u","name":"x","url":"https://example.com/list.m3u","allowCleartext":false}}"#
+        XCTAssertEqual(SharedLogin.parse(right, keys: keys).count, 1)
+    }
+
+    func testNewestLoginWinsAndOldRemovalsGo() {
+        let a = Provider.m3u(name: "A", url: "https://a.example/1.m3u", allowCleartext: false)
+        let b = Provider.m3u(name: "A renamed", url: "https://a.example/1.m3u", allowCleartext: false)
+        let own = SyncBundle(at: 10, logins: ["1111111111111111": SharedLogin(at: 5, provider: a)])
+        let other = SyncBundle(at: 10, logins: ["1111111111111111": SharedLogin(at: 9, provider: b),
+                                                 "2222222222222222": SharedLogin(at: 1, provider: nil)])
+        let now = 1 + SyncParcel.tombstoneMs + 1
+        let m = SyncBundle.merge(own, [other], now: now)
+        XCTAssertEqual(m.logins?["1111111111111111"]?.provider, b)
+        XCTAssertNil(m.logins?["2222222222222222"], "a removal older than 90 days is forgotten")
+        // A device that doesn't share logins takes none in.
+        XCTAssertNil(SyncBundle.merge(SyncBundle(at: 10), [other], now: 20).logins)
+    }
 }

@@ -24,12 +24,16 @@ struct Meta: Codable, Equatable {
     var syncUnlocked: Bool?
     /** The saved provider in use ([SavedProvider.id]). */
     var activeProvider: String?
+    /** This device shares provider logins with linked devices that do too (opt-in). */
+    var shareLogins: Bool?
 }
 
 /** A provider the user has added. [id] is local: it files the provider's own records on this device. */
 struct SavedProvider: Codable, Identifiable, Equatable {
     var id: String
     var provider: Provider
+    /** When it was added or last edited here, or by a shared login (whole ms); newest wins when shared. */
+    var changedAt: Double?
 }
 
 struct PendingLink: Identifiable, Equatable {
@@ -55,7 +59,7 @@ private func nowMs() -> Double { (Date().timeIntervalSince1970 * 1000).rounded()
 @MainActor
 @Observable
 final class AppModel {
-    static let defaultRelay = "https://telly-sync.tellyteam.workers.dev"
+    nonisolated static let defaultRelay = "https://telly-sync.tellyteam.workers.dev"
     /** Coming back to telly syncs at most this often. */
     private static let syncGapMs: Double = 60_000
 
@@ -136,6 +140,8 @@ final class AppModel {
     private func saveProviders(_ list: [SavedProvider]) {
         providers = list
         Keychain.set("providers", String(decoding: (try? JSONEncoder().encode(list)) ?? Data("[]".utf8), as: UTF8.self))
+        // Adding, changing or removing a provider is news for devices sharing logins.
+        if meta.shareLogins == true { syncSoon() }
     }
 
     /** Makes [saved] the provider in use: its records, then its lists (saved ones straight away). */
@@ -229,11 +235,15 @@ final class AppModel {
         let saved: SavedProvider
         if let editing, let i = list.firstIndex(where: { $0.id == editing }) {
             // A new server or login means new lists: the old ones go.
-            if list[i].provider.syncIdentity != p.syncIdentity { CatalogCache.clear(for: list[i].provider) }
+            if list[i].provider.syncIdentity != p.syncIdentity {
+                CatalogCache.clear(for: list[i].provider)
+                forgetLogin(list[i].provider)
+            }
             list[i].provider = p
+            list[i].changedAt = nowMs()
             saved = list[i]
         } else {
-            saved = SavedProvider(id: Self.newProviderId(), provider: p)
+            saved = SavedProvider(id: Self.newProviderId(), provider: p, changedAt: nowMs())
             list.append(saved)
         }
         saveProviders(list)
@@ -248,9 +258,10 @@ final class AppModel {
     }
 
     /** Removes a provider from this device, with its lists and everything watched with it. */
-    func removeProvider(_ id: String) async {
+    func removeProvider(_ id: String, at: Double? = nil) async {
         guard let gone = providers.first(where: { $0.id == id }), player == nil else { return }
         saveProviders(providers.filter { $0.id != id })
+        forgetLogin(gone.provider, at: at)
         // Its history holds stream URLs, which carry the login.
         Records.delete(id)
         CatalogCache.clear(for: gone.provider)
@@ -274,9 +285,70 @@ final class AppModel {
               let i = providers.firstIndex(where: { $0.id == id }) else { return }
         var list = providers
         list[i].provider = p
+        list[i].changedAt = nowMs()
         saveProviders(list)
         provider = p
         HTTP.shared.allowCleartext = allow
+    }
+
+    // MARK: Shared logins (opt-in)
+
+    /** Removed providers, by identity, and when: shared as removals while logins are shared. */
+    private var removedLogins: [String: Double] {
+        get { Store.read("login-ledger", as: [String: Double].self) ?? [:] }
+        set { Store.write("login-ledger", newValue.filter { nowMs() - $0.value < SyncParcel.tombstoneMs }) }
+    }
+
+    private func forgetLogin(_ p: Provider, at: Double? = nil) {
+        removedLogins[p.syncIdentity] = at ?? nowMs()
+    }
+
+    /** Turns sharing provider logins with linked devices on or off, and syncs. */
+    func setShareLogins(_ on: Bool) {
+        meta.shareLogins = on
+        Store.write("meta", meta)
+        Task { await syncNow(force: true) }
+    }
+
+    /** This device's logins (and removals) to share, by tag. */
+    private func ownLogins(_ keys: SyncCrypto.Keys) -> [String: SharedLogin] {
+        var out: [String: SharedLogin] = [:]
+        for (identity, at) in removedLogins { out[SyncCrypto.providerTag(keys, identity: identity)] = SharedLogin(at: at, provider: nil) }
+        for saved in providers {
+            let tag = SyncCrypto.providerTag(keys, identity: saved.provider.syncIdentity)
+            let at = saved.changedAt ?? 0
+            if (out[tag]?.at ?? -1) <= at { out[tag] = SharedLogin(at: at, provider: saved.provider) }
+        }
+        return out
+    }
+
+    /** Takes in other devices' logins: new providers, newer logins, and removals. Returns whether anything changed. */
+    private func applyLogins(_ logins: [String: SharedLogin], _ keys: SyncCrypto.Keys) async -> Bool {
+        var changed = false
+        for (tag, login) in logins {
+            let mine = providers.first { SyncCrypto.providerTag(keys, identity: $0.provider.syncIdentity) == tag }
+            if let mine, (mine.changedAt ?? 0) >= login.at { continue }
+            if login.provider == nil {
+                if let mine { await removeProvider(mine.id, at: login.at); changed = true }
+                continue
+            }
+            guard let p = login.provider else { continue }
+            if let mine, let i = providers.firstIndex(of: mine) {
+                var list = providers
+                list[i].provider = p
+                list[i].changedAt = login.at
+                saveProviders(list)
+                if mine.id == activeId { provider = p; HTTP.shared.allowCleartext = p.allowCleartext }
+                changed = true
+            } else if (removedLogins[p.syncIdentity] ?? -1) < login.at {
+                let saved = SavedProvider(id: Self.newProviderId(), provider: p, changedAt: login.at)
+                saveProviders(providers + [saved])
+                changed = true
+                // A device with no provider yet starts with the first one shared with it.
+                if activeId == nil { await activate(saved) }
+            }
+        }
+        return changed
     }
 
     func clearSavedData() async {
@@ -496,6 +568,26 @@ final class AppModel {
         }
     }
 
+    /**
+     * A device with no provider yet joins a household and takes the providers shared with it:
+     * links with [code], turns on sharing logins, and signs in with the first one shared.
+     */
+    func joinForLogins(code: String, relay: String = AppModel.defaultRelay) async throws {
+        meta.shareLogins = true
+        meta.syncUnlocked = true
+        Store.write("meta", meta)
+        try await startSync(code: code, relay: relay)
+        if providers.isEmpty {
+            throw SyncError(message: "Linked, but no providers were shared yet. On a device that has them, turn on Settings → Sync → Share provider logins, then try again here.")
+        }
+    }
+
+    /** Shows or hides sync on the sign-in screen (seven taps on the wordmark), like Settings. */
+    func unlockSync() {
+        meta.syncUnlocked = true
+        Store.write("meta", meta)
+    }
+
     /** Takes this iPad out of sync: its copy leaves the relay; the other devices keep theirs. */
     func stopSync() async {
         guard let config = sync else { return }
@@ -527,7 +619,10 @@ final class AppModel {
      * when they're next in use (resolving it needs their lists). Never during playback.
      */
     func syncNow(force: Bool = false) async {
-        guard let config = sync, !syncBusy, player == nil, let activeId else { return }
+        guard let config = sync, !syncBusy, player == nil else { return }
+        let sharing = meta.shareLogins == true
+        // Without a provider there's nothing to sync, except logins shared with this device.
+        guard activeId != nil || sharing else { return }
         if !force, let at = syncedAt, nowMs() - at < Self.syncGapMs { return }
         syncBusy = true
         syncError = nil
@@ -542,8 +637,12 @@ final class AppModel {
                                              : Records.load(saved.id)
                 locals[tag] = (saved.id, SyncLocal.Local(progress: r.progress, history: r.history, favourites: r.favourites, ledger: r.ledger))
             }
-            guard let current = locals.first(where: { $0.value.id == activeId })?.key else { return }
-            let own = SyncBundle(at: now, sections: locals.mapValues { SyncLocal.toParcel($0.local, now: now) })
+            // A version 1 parcel doesn't say whose it is, so it's read as this device's provider only
+            // when there's just the one. With several, it's read as nothing: taken as the provider in
+            // use, a Fire TV's My List would turn up under every provider switched to.
+            let current = providers.count == 1 ? locals.first(where: { $0.value.id == activeId })?.key ?? "0000000000000000" : "0000000000000000"
+            let own = SyncBundle(at: now, sections: locals.mapValues { SyncLocal.toParcel($0.local, now: now) },
+                                 logins: sharing ? ownLogins(keys) : nil)
             let merged = try await SyncClient.syncOnce(config.relay, keys, device: config.device, own: own, current: current, now: now)
             guard sync == config else { return }
             for (tag, entry) in locals {
@@ -561,6 +660,8 @@ final class AppModel {
                 Records.save(entry.id, r)
             }
             syncedAt = nowMs()
+            // New or changed providers from other devices: their records come in on the next round.
+            if sharing, let logins = merged.logins, await applyLogins(logins, keys) { syncSoon() }
         } catch {
             syncError = (error as? SyncError)?.message ?? "Couldn't reach the sync relay."
         }

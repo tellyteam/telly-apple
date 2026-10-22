@@ -52,13 +52,13 @@ enum SyncClient {
             guard let from = p["device"] as? String, from != device,
                   let b64 = p["body"] as? String, let box = Data(base64Encoded: b64),
                   let text = SyncCrypto.open(keys, device: from, box) else { return nil }
-            return SyncBundle.parse(text, current: current)
+            return SyncBundle.parse(text, current: current, keys: keys, device: from)
         }
     }
 
     static func push(_ relay: String, _ keys: SyncCrypto.Keys, device: String, _ bundle: SyncBundle) async throws {
         guard let url = URL(string: "\(base(relay))/v1/\(keys.mailbox)/\(device)") else { throw SyncError(message: "The relay address isn't right.") }
-        let body = try SyncCrypto.seal(keys, device: device, bundle.json())
+        let body = try SyncCrypto.seal(keys, device: device, bundle.json(keys: keys, device: device))
         _ = try await send("PUT", url, keys, body: body)
     }
 

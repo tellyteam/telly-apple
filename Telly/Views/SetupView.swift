@@ -17,6 +17,10 @@ struct SetupView: View {
     @State private var url = ""
     @State private var allowCleartext = false
     @State private var showPassword = false
+    @State private var logoTaps = 0
+    @State private var syncCode = ""
+    @State private var joining = false
+    @State private var joinError: String?
     @State private var connecting = false
     @State private var error: String?
 
@@ -24,6 +28,8 @@ struct SetupView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Wordmark(height: 42)
+                    .contentShape(Rectangle())
+                    .onTapGesture { logoTaps += 1; if logoTaps >= 7 { app.unlockSync() } }
                 Text("Add your IPTV provider to start watching. telly doesn't come with any channels.")
                     .foregroundStyle(Theme.muted)
                 Picker("Type", selection: $xtream) {
@@ -68,6 +74,7 @@ struct SetupView: View {
                 }
                 Text("Your login stays on this \(Device.name), in its Keychain. telly only talks to your provider.")
                     .font(.caption).foregroundStyle(Theme.faint)
+                if !inSheet && (app.meta.syncUnlocked == true || app.sync != nil) { getFromAnotherDevice }
             }
             .padding(32)
             .frame(maxWidth: 560)
@@ -78,6 +85,50 @@ struct SetupView: View {
         }
         .background(Theme.background)
         .onAppear(perform: fill)
+    }
+
+    /**
+     * Signing in with the providers another device shares, by its sync code (a hidden feature, like
+     * sync). Still linked, with no provider left, it says so and offers a way out instead.
+     */
+    @ViewBuilder private var getFromAnotherDevice: some View {
+        if app.sync != nil {
+            VStack(alignment: .leading, spacing: 10) {
+                Divider().padding(.vertical, 6)
+                Text("This \(Device.name) is still linked for sync").font(.headline)
+                Text(app.meta.shareLogins == true
+                     ? "Providers your other devices share arrive here on their own."
+                     : "Add a provider to pick up where you left off on your other devices.")
+                    .font(.caption).foregroundStyle(Theme.muted)
+                Button("Stop syncing on this \(Device.name)", role: .destructive) { Task { await app.stopSync() } }
+                    .buttonStyle(.bordered)
+            }
+        } else {
+            joinWithCode
+        }
+    }
+
+    private var joinWithCode: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider().padding(.vertical, 6)
+            Text("Or get your providers from another device").font(.headline)
+            Text("On a device that has them, turn on Settings → Sync → Share provider logins, then enter its sync code here.")
+                .font(.caption).foregroundStyle(Theme.muted)
+            HStack {
+                TextField("Code", text: $syncCode, prompt: Text("ABCD-EFGH-JKMN-PQRS")).formField().plainEntry(capitals: true).font(.body.monospaced())
+                Button(joining ? "Linking…" : "Get providers") {
+                    Task {
+                        joining = true
+                        joinError = nil
+                        do { try await app.joinForLogins(code: syncCode) } catch { joinError = error.localizedDescription }
+                        joining = false
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(joining || syncCode.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            if let joinError { Text(joinError).foregroundStyle(.orange).font(.callout) }
+        }
     }
 
     private func field(_ label: String, _ text: Binding<String>, placeholder: String = "", url: Bool = false) -> some View {

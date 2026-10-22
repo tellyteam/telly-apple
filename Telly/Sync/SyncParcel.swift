@@ -166,26 +166,35 @@ struct SyncParcel: Equatable {
 
 /**
  * A whole parcel (version 2): a section for each provider the device has, under its provider tag.
- * Reads version 1 parcels too, as one section for the reader's current provider.
+ * Reads version 1 parcels too, as one section for the provider the reader says (its only one).
  */
 struct SyncBundle: Equatable {
     var at: Double = 0
     var sections: [String: SyncParcel] = [:]
+    /** The opt-in logins, by provider tag; nil when this device doesn't share them (or the parcel has none). */
+    var logins: [String: SharedLogin]?
 
     static let maxSections = 20
     private static let tagPattern = try! NSRegularExpression(pattern: "^[0-9a-f]{16}$")
     static func isTag(_ t: String) -> Bool { tagPattern.firstMatch(in: t, range: NSRange(t.startIndex..., in: t)) != nil }
 
-    func json() -> String {
+    /** The parcel; with [keys] and [device], any logins go in sealed. */
+    func json(keys: SyncCrypto.Keys? = nil, device: String? = nil) -> String {
         var providers: [String: Any] = [:]
         for (tag, section) in sections.sorted(by: { $0.value.at > $1.value.at }).prefix(Self.maxSections) {
             providers[tag] = SyncParcel.trim(section, now: at).sectionObject()
         }
-        return SyncParcel.text(["v": 2, "at": SyncParcel().num(at), "providers": providers])
+        var obj: [String: Any] = ["v": 2, "at": SyncParcel().num(at), "providers": providers]
+        if let logins, let keys, let device,
+           let box = try? SyncCrypto.sealLogins(keys, device: device, SharedLogin.text(SharedLogin.trim(logins, now: at))) {
+            obj["logins"] = box.base64EncodedString()
+        }
+        return SyncParcel.text(obj)
     }
 
-    /** Another device's parcel; [current] is the tag a version 1 parcel is read as. */
-    static func parse(_ text: String, current: String) -> SyncBundle? {
+    /** Another device's parcel; [current] is the tag a version 1 parcel is read as. With [keys] and
+     *  the sending [device], its logins are opened too (each checked against its own tag). */
+    static func parse(_ text: String, current: String, keys: SyncCrypto.Keys? = nil, device: String? = nil) -> SyncBundle? {
         guard let raw = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] else { return nil }
         let at = SyncParcel.time(raw["at"]) ?? 0
         switch SyncParcel.time(raw["v"]) {
@@ -197,17 +206,90 @@ struct SyncBundle: Equatable {
                 guard isTag(tag), let section = value as? [String: Any], b.sections.count < maxSections else { continue }
                 b.sections[tag] = SyncParcel.parseSection(section, at: at)
             }
+            if let keys, let device, let b64 = raw["logins"] as? String, let box = Data(base64Encoded: b64),
+               let text = SyncCrypto.openLogins(keys, device: device, box) {
+                b.logins = SharedLogin.parse(text, keys: keys)
+            }
             return b
         default:
             return nil
         }
     }
 
-    /** [own] combined with others, section by section, for the providers [own] has. */
+    /** [own] combined with others, section by section, for the providers [own] has; and the
+     *  logins, newest per tag, if [own] shares them. */
     static func merge(_ own: SyncBundle, _ others: [SyncBundle], now: Double) -> SyncBundle {
         var out = SyncBundle(at: now)
         for (tag, section) in own.sections {
             out.sections[tag] = SyncParcel.merge(section, others.compactMap { $0.sections[tag] }, now: now)
+        }
+        if var logins = own.logins {
+            for other in others.compactMap(\.logins) {
+                for (tag, login) in other where (logins[tag]?.at ?? -1) < login.at { logins[tag] = login }
+            }
+            out.logins = SharedLogin.trim(logins, now: now)
+        }
+        return out
+    }
+}
+
+/**
+ * A provider's login as shared between devices that opt in (PROTOCOL.md, "Logins"), or its removal
+ * (no [provider]). Written in the same JSON shape by every telly app.
+ */
+struct SharedLogin: Equatable {
+    var at: Double
+    var provider: Provider?
+
+    static let max = 20
+
+    /** Drops removals past the tombstone time, and keeps the newest [max]. */
+    static func trim(_ logins: [String: SharedLogin], now: Double) -> [String: SharedLogin] {
+        let kept = logins.filter { $0.value.provider != nil || now - $0.value.at < SyncParcel.tombstoneMs }
+        return Dictionary(uniqueKeysWithValues: kept.sorted { $0.value.at > $1.value.at }.prefix(max).map { ($0.key, $0.value) })
+    }
+
+    func object() -> [String: Any] {
+        let at = SyncParcel().num(self.at)
+        switch provider {
+        case nil:
+            return ["at": at, "removed": true]
+        case let .xtream(name, server, username, password, allow)?:
+            return ["at": at, "kind": "xtream", "name": name, "server": server, "username": username, "password": password, "allowCleartext": allow]
+        case let .m3u(name, url, allow)?:
+            return ["at": at, "kind": "m3u", "name": name, "url": url, "allowCleartext": allow]
+        }
+    }
+
+    static func text(_ logins: [String: SharedLogin]) -> String {
+        SyncParcel.text(logins.mapValues { $0.object() })
+    }
+
+    /** Logins another device shared, keeping only those whose tag matches their own identity. */
+    static func parse(_ text: String, keys: SyncCrypto.Keys) -> [String: SharedLogin] {
+        guard let raw = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] else { return [:] }
+        var out: [String: SharedLogin] = [:]
+        for (tag, value) in raw {
+            guard SyncBundle.isTag(tag), let o = value as? [String: Any], let at = SyncParcel.time(o["at"]) else { continue }
+            if o["removed"] as? Bool == true {
+                out[tag] = SharedLogin(at: at, provider: nil)
+                continue
+            }
+            let str = { (k: String) in o[k] as? String }
+            let allow = o["allowCleartext"] as? Bool ?? false
+            let p: Provider
+            switch str("kind") {
+            case "xtream":
+                guard let server = str("server"), let user = str("username"), let pass = str("password") else { continue }
+                p = .xtream(name: str("name") ?? defaultProviderName, server: server, username: user, password: pass, allowCleartext: allow)
+            case "m3u":
+                guard let url = str("url") else { continue }
+                p = .m3u(name: str("name") ?? defaultProviderName, url: url, allowCleartext: allow)
+            default:
+                continue
+            }
+            guard SyncCrypto.providerTag(keys, identity: p.syncIdentity) == tag else { continue }
+            out[tag] = SharedLogin(at: at, provider: p)
         }
         return out
     }

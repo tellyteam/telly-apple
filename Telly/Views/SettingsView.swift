@@ -104,7 +104,8 @@ struct SettingsView: View {
         }
         .confirmationDialog("Remove \(app.provider?.name ?? "this provider")?", isPresented: $confirmRemove, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { if let id = app.activeId { Task { await app.removeProvider(id) } } }
-        } message: { Text("Its login, lists, My List and progress are removed from this \(Device.name). Linked devices keep theirs.") }
+        } message: { Text("Its login, lists, My List and progress are removed from this \(Device.name)." + (app.sync != nil && app.meta.shareLogins == true
+                                    ? " Your linked devices that share provider logins remove it too." : " Linked devices keep theirs.")) }
         .confirmationDialog("Clear watch progress?", isPresented: $confirmClearProgress, titleVisibility: .visible) {
             Button("Clear it all", role: .destructive) { app.clearProgress() }
         } message: { Text("Forgets where you got to in every film and episode, and empties Continue watching. My List is kept.") }
@@ -135,6 +136,7 @@ private struct SyncSection: View {
     @State private var error: String?
     @State private var confirmStop = false
     @State private var scanning = false
+    @State private var confirmShare = false
 
     var body: some View {
         SwiftUI.Section {
@@ -152,9 +154,15 @@ private struct SyncSection: View {
                     }
                 }
                 Button(app.syncBusy ? "Syncing…" : "Sync now") { Task { await app.syncNow(force: true) } }.disabled(app.syncBusy)
+                Toggle(isOn: Binding(get: { app.meta.shareLogins == true }, set: { on in if on { confirmShare = true } else { app.setShareLogins(false) } })) {
+                    VStack(alignment: .leading) {
+                        Text("Share provider logins")
+                        Text("Your providers, with their logins, on your other devices that share them too.").font(.caption).foregroundStyle(Theme.muted)
+                    }
+                }
                 Button("Stop syncing on this \(Device.name)", role: .destructive) { confirmStop = true }
             } else {
-                Text("Pick up where you left off on your other devices. Shares progress, Continue watching and My List, end-to-end encrypted. Your provider login is never shared: sign in on each device.")
+                Text("Pick up where you left off on your other devices. Shares progress, Continue watching and My List, end-to-end encrypted. Provider logins aren't shared unless you turn that on.")
                     .font(.callout).foregroundStyle(Theme.muted)
                 Button(linking && !joining ? "Starting…" : "Start syncing") { link(nil) }.disabled(linking)
                 #if os(iOS)
@@ -189,6 +197,12 @@ private struct SyncSection: View {
             } else {
                 error = "That QR code isn't a telly sync code."
             }
+        }
+        .alert("Share provider logins?", isPresented: $confirmShare) {
+            Button("Share them") { app.setShareLogins(true) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your providers' addresses, usernames and passwords go to your other linked devices that have this on, and they get theirs. They're end-to-end encrypted: the relay can't read them, but anyone with your sync code could. Adding, changing or removing a provider then does the same on those devices, including removing what was watched with it.")
         }
         .confirmationDialog("Stop syncing on this \(Device.name)?", isPresented: $confirmStop, titleVisibility: .visible) {
             Button("Stop syncing", role: .destructive) { Task { await app.stopSync(); showCode = true } }

@@ -14,6 +14,8 @@ enum SyncCrypto {
         let auth: String
         /** Keys provider tags (see [providerTag]). */
         let provider: SymmetricKey
+        /** Seals the opt-in logins box (see [sealLogins]). */
+        let logins: SymmetricKey
     }
 
     static func randomBytes(_ n: Int) -> [UInt8] {
@@ -64,7 +66,7 @@ enum SyncCrypto {
         let auth = derive("auth").base64EncodedString()
             .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
         return Keys(mailbox: hex(derive("mailbox").prefix(16)), key: SymmetricKey(data: derive("key")), auth: auth,
-                    provider: SymmetricKey(data: derive("provider")))
+                    provider: SymmetricKey(data: derive("provider")), logins: SymmetricKey(data: derive("logins")))
     }
 
     /** A provider's tag: meaningless without the link code; with it, only "same provider or not". */
@@ -81,11 +83,27 @@ enum SyncCrypto {
 
     /** The plaintext, or nil if the parcel isn't ours, was altered, or is from a newer version. */
     static func open(_ keys: Keys, device: String, _ box: Data) -> String? {
+        openBox(box, key: keys.key, aad: aad(keys, device))
+    }
+
+    private static func loginsAad(_ keys: Keys, _ device: String) -> Data { Data("telly-sync v1|logins|\(keys.mailbox)|\(device)".utf8) }
+
+    /** The opt-in logins box: sealed again, with its own key, inside the (already sealed) parcel. */
+    static func sealLogins(_ keys: Keys, device: String, _ plaintext: String, nonce: [UInt8] = randomBytes(12)) throws -> Data {
+        let box = try AES.GCM.seal(Data(plaintext.utf8), using: keys.logins, nonce: AES.GCM.Nonce(data: nonce), authenticating: loginsAad(keys, device))
+        return Data([version]) + Data(nonce) + box.ciphertext + box.tag
+    }
+
+    static func openLogins(_ keys: Keys, device: String, _ box: Data) -> String? {
+        openBox(box, key: keys.logins, aad: loginsAad(keys, device))
+    }
+
+    private static func openBox(_ box: Data, key: SymmetricKey, aad: Data) -> String? {
         let b = [UInt8](box)
         guard b.count >= 1 + 12 + 16, b[0] == version,
               let nonce = try? AES.GCM.Nonce(data: b[1..<13]),
               let sealed = try? AES.GCM.SealedBox(nonce: nonce, ciphertext: b[13..<(b.count - 16)], tag: b[(b.count - 16)...]),
-              let plain = try? AES.GCM.open(sealed, using: keys.key, authenticating: aad(keys, device))
+              let plain = try? AES.GCM.open(sealed, using: key, authenticating: aad)
         else { return nil }
         return String(data: plain, encoding: .utf8)
     }
