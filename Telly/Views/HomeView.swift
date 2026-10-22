@@ -1,4 +1,3 @@
-import ImageIO
 import SwiftUI
 
 struct HomeView: View {
@@ -159,10 +158,8 @@ struct ChannelTile: View {
             Text(channel.name).font(.footnote).foregroundStyle(Theme.muted).lineLimit(1).frame(width: 200, alignment: .leading)
         }
         .task(id: channel.logo) {
-            guard let url = Artwork.allowed(channel.logo, app),
-                  let (data, _) = try? await URLSession.shared.data(from: url),
-                  let source = CGImageSourceCreateWithData(data as CFData, nil) else { return }
-            image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+            guard let url = Artwork.allowed(channel.logo, app) else { return }
+            image = await ArtCache.image(url, providerId: app.activeId)
         }
     }
 }

@@ -15,20 +15,21 @@ struct Artwork: View {
     let url: String?
     let title: String
     var contentMode: ContentMode = .fill
+    @State private var image: CGImage?
 
     var body: some View {
         // Exactly the space it's given: a filled image would otherwise spill outside its frame.
         Color.clear.overlay {
-            if let allowed = Artwork.allowed(url, app) {
-                AsyncImage(url: allowed, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
-                    // The titled tile only until the image arrives, never behind it.
-                    if let image = phase.image { image.resizable().aspectRatio(contentMode: contentMode) } else { placeholder }
-                }
-            } else {
-                placeholder
-            }
+            // The titled tile only until the image arrives, never behind it.
+            if let image { Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: contentMode).transition(.opacity) } else { placeholder }
         }
         .clipped()
+        .task(id: Artwork.allowed(url, app)) {
+            image = nil
+            guard let allowed = Artwork.allowed(url, app) else { return }
+            let loaded = await ArtCache.image(allowed, providerId: app.activeId)
+            withAnimation(.easeOut(duration: 0.2)) { image = loaded }
+        }
     }
 
     /** The address, if the provider's plain-HTTP setting allows it. */

@@ -70,6 +70,7 @@ struct RootView: View {
             }
         }
         .background(Theme.background)
+        .background { if app.provider != nil { ArtKeeper() } }
         #if os(iOS)
         .fullScreenCover(item: $app.player) { request in
             PlayerView(request: request).environment(app)
