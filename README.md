@@ -94,4 +94,6 @@ xcodebuild test -project Telly.xcodeproj -scheme Telly -destination 'platform=iO
 
 ## Licence
 
-GPL-3.0-only. VLCKit is LGPL-2.1 and Sparkle is MIT (`Vendor/*-COPYING.txt` and `Vendor/Sparkle-LICENSE.txt` once fetched).
+telly is free for personal, non-commercial use under the [PolyForm Noncommercial License 1.0.0](LICENSE). Commercial use, including selling telly or bundling it with a paid service, needs permission: ask through GitHub.
+
+VLCKit is LGPL-2.1 and Sparkle is MIT (`Vendor/*-COPYING.txt` and `Vendor/Sparkle-LICENSE.txt` once fetched).
