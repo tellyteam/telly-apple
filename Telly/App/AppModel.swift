@@ -124,11 +124,17 @@ final class AppModel {
     /** The saved providers. Before there could be several, the one provider and its records were
      *  kept unscoped: they become the first saved provider's. */
     private func loadProviders() -> [SavedProvider] {
-        if let text = Keychain.get("providers"), let list = try? JSONDecoder().decode([SavedProvider].self, from: Data(text.utf8)) {
+        if let text = Keychain.get("providers"), var list = try? JSONDecoder().decode([SavedProvider].self, from: Data(text.utf8)) {
+            // One saved without a time (from before providers had one) gets now: it's still here, so
+            // for shared logins it's newer than any older removal of it on another device.
+            if list.contains(where: { $0.changedAt == nil }) {
+                for i in list.indices where list[i].changedAt == nil { list[i].changedAt = nowMs() }
+                saveProviders(list)
+            }
             return list
         }
         guard let old = Keychain.get("provider").flatMap({ try? JSONDecoder().decode(Provider.self, from: Data($0.utf8)) }) else { return [] }
-        let saved = SavedProvider(id: Self.newProviderId(), provider: old)
+        let saved = SavedProvider(id: Self.newProviderId(), provider: old, changedAt: nowMs())
         Records.move(from: nil, to: saved.id)
         saveProviders([saved])
         Keychain.delete("provider")
