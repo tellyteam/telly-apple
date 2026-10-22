@@ -37,6 +37,8 @@ jobs:
       - name: Release notes from the tag
         run: |
           : > notes.md
+          # checkout leaves the tag without its message: fetch it as it was pushed.
+          if [ "$GITHUB_REF_TYPE" = tag ]; then git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"; fi
           if [ "$GITHUB_REF_TYPE" = tag ] && [ "$(git cat-file -t "$GITHUB_REF_NAME" 2>/dev/null)" = tag ]; then
             git for-each-ref "refs/tags/$GITHUB_REF_NAME" --format='%(contents)' > notes.md
           fi
