@@ -108,6 +108,20 @@ struct DownloadsView: View {
             }
         }
         .navigationTitle("Downloads")
+        .task(id: app.activeId) { await fillInSeasons(mine) }
+    }
+
+    /** Downloads made before the season was saved with them: found in the series' saved episode lists. */
+    private func fillInSeasons(_ mine: [DownloadItem]) async {
+        guard let p = app.provider else { return }
+        var found: [String: String] = [:]
+        for (sid, items) in Dictionary(grouping: mine.filter { $0.kind == .episode && $0.season == nil }, by: { $0.seriesId ?? "" }) {
+            guard let s = app.seriesItem(sid), let data = try? await Repo.seriesData(p, s, .cache) else { continue }
+            for d in items {
+                if let season = data.seasons.first(where: { $0.episodes.contains { $0.id == d.itemId || $0.url == d.url } }) { found[d.id] = season.name }
+            }
+        }
+        if !found.isEmpty { Downloads.shared.setSeasons(found) }
     }
 
     private func row(_ d: DownloadItem) -> some View {
@@ -115,7 +129,7 @@ struct DownloadsView: View {
             Artwork(url: d.art, title: d.title).frame(width: 96, height: 54).clipShape(RoundedRectangle(cornerRadius: 6))
             VStack(alignment: .leading, spacing: 4) {
                 Text(d.show ?? d.title).font(.headline).lineLimit(1)
-                if d.show != nil { Text(d.title).font(.subheadline).foregroundStyle(Theme.muted).lineLimit(1) }
+                if d.show != nil { Text([d.season, d.title].compactMap { $0 }.joined(separator: " · ")).font(.subheadline).foregroundStyle(Theme.muted).lineLimit(1) }
                 switch d.state {
                 case .downloading: ProgressView(value: d.fraction).frame(maxWidth: 260)
                 case .failed: Text(d.message ?? "Failed").font(.caption).foregroundStyle(.orange).lineLimit(2)

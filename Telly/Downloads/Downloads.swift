@@ -22,6 +22,8 @@ struct DownloadItem: Codable, Identifiable, Equatable {
     /** The series, for an episode. */
     var show: String?
     var seriesId: String?
+    /** Episodes: the season, as the provider names it ("Season 2"). Older downloads have none until filled in. */
+    var season: String?
     var art: String?
     var state: State = .queued
     var received: Int64 = 0
@@ -159,11 +161,20 @@ final class Downloads {
     func add(providerId: String, _ c: Channel, kind: DownloadItem.Kind, show: String? = nil, seriesId: String? = nil, art: String? = nil) {
         guard Self.canDownload(c.url), item(providerId, c.url) == nil else { return }
         items.append(DownloadItem(id: "\(providerId)|\(Playback.progressKey(c.url))", providerId: providerId, url: c.url, itemId: c.id, kind: kind,
-                                  title: c.name, show: show, seriesId: seriesId, art: c.logo ?? art,
+                                  title: c.name, show: show, seriesId: seriesId, season: kind == .episode && !c.group.isEmpty ? c.group : nil, art: c.logo ?? art,
                                   added: (Date().timeIntervalSince1970 * 1000).rounded()))
         save()
         reschedule()
         pump()
+    }
+
+    /** Fills in the season of downloads made before it was saved with them. */
+    func setSeasons(_ seasons: [String: String]) {
+        var changed = false
+        for i in items.indices where items[i].season == nil {
+            if let s = seasons[items[i].id] { items[i].season = s; changed = true }
+        }
+        if changed { save() }
     }
 
     func remove(_ id: String) {
