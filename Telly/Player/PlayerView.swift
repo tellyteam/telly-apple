@@ -6,6 +6,9 @@ struct PlayerView: View {
     let request: PlayRequest
 
     @State private var player = PlayerController()
+    @ScaledMetric(relativeTo: .title) private var textScale: CGFloat = 1
+    /** Up to half as big again, so the controls still fit a phone held sideways. */
+    private var controlScale: CGFloat { min(textScale, 1.5) }
     @State private var index = 0
     @State private var controlsVisible = true
     @State private var hideTask: Task<Void, Never>?
@@ -75,6 +78,7 @@ struct PlayerView: View {
         .onAppear {
             index = request.index
             Device.keepAwake(true)
+            Device.watchingOrientation(true)
             #if os(macOS)
             // Once the pages underneath have let go of the keyboard.
             DispatchQueue.main.async { focused = true }
@@ -85,6 +89,7 @@ struct PlayerView: View {
         }
         .onDisappear {
             Device.keepAwake(false)
+            Device.watchingOrientation(false)
             NowPlaying.shared.end()
             player.shutdown()
         }
@@ -171,8 +176,9 @@ struct PlayerView: View {
 
     private func roundButton(_ icon: String, _ label: String, big: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: icon).font(.system(size: big ? 44 : 30, weight: .semibold))
-                .frame(width: big ? 96 : 72, height: big ? 96 : 72)
+            // Sizes follow the reader's text size (Dynamic Type), from these at the default.
+            Image(systemName: icon).font(.system(size: (big ? 44 : 30) * controlScale, weight: .semibold))
+                .frame(width: (big ? 96 : 72) * controlScale, height: (big ? 96 : 72) * controlScale)
                 .background(.black.opacity(0.35), in: Circle())
         }
         // Plain: a Mac otherwise draws its own square bezel around the round button.
@@ -192,8 +198,10 @@ struct PlayerView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Button { dismissPrompt() } label: { Image(systemName: "xmark").font(.caption2.weight(.bold)).padding(6) }
+            // A full 44-point target, however small the prompt looks.
+            Button { dismissPrompt() } label: { Image(systemName: "xmark").font(.caption2.weight(.bold)).frame(width: 44, height: 44).contentShape(Rectangle()) }
                 .buttonStyle(.plain)
+                .padding(.vertical, -10)
                 .accessibilityLabel("Cancel the next episode")
         }
         .foregroundStyle(.white)

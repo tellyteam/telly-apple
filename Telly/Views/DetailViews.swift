@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FilmDetailView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.compactWidth) private var compact
     let film: Channel
     @State private var details: Details?
 
@@ -11,18 +12,21 @@ struct FilmDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Artwork(url: details?.backdrop ?? film.logo, title: "")
-                    .frame(height: 320)
+                    .frame(height: compact ? 230 : 320)
+                    .clipped()
                     .overlay(LinearGradient(colors: [.clear, Theme.background], startPoint: .center, endPoint: .bottom))
                 HStack(alignment: .top, spacing: 28) {
-                    PosterCard(title: "", image: film.logo, width: 180).offset(y: -90).padding(.bottom, -90)
+                    // The poster beside the details when there's room; on a phone the backdrop is enough.
+                    if !compact { PosterCard(title: "", image: film.logo, fixedWidth: 180).offset(y: -90).padding(.bottom, -90).accessibilityHidden(true) }
                     VStack(alignment: .leading, spacing: 12) {
-                        Text(film.name).font(.largeTitle.weight(.bold))
+                        Text(film.name).font((compact ? Font.title : .largeTitle).weight(.bold)).accessibilityAddTraits(.isHeader)
                         Text(facts(details, group: film.group)).foregroundStyle(Theme.muted)
                         if let p, resumable {
                             HStack { ProgressBar(fraction: p.fraction).frame(width: 200); Text("\(p.minutesLeft) min left").font(.caption).foregroundStyle(Theme.muted) }
                         }
-                        HStack(spacing: 12) {
+                        ActionButtons {
                             Button { app.playFilm(film) } label: { Label(resumable ? "Resume" : "Play", systemImage: "play.fill") }.buttonStyle(.borderedProminent)
+                        } rest: {
                             if resumable { Button("Play from the start") { app.playFilm(film, fromStart: true) }.buttonStyle(.bordered) }
                             let fav = app.isFavourite(.film, film.id)
                             Button { app.toggleFavourite(.film, film.id) } label: { Label(fav ? "In My List" : "My List", systemImage: fav ? "checkmark" : "plus") }
@@ -33,7 +37,7 @@ struct FilmDetailView: View {
                         if let cast = details?.cast { Text("Cast: \(cast)").font(.callout).foregroundStyle(Theme.muted).frame(maxWidth: 640, alignment: .leading) }
                     }
                 }
-                .padding(.horizontal, 28)
+                .padding(.horizontal, compact ? 16 : 28)
             }
             .padding(.bottom, 40)
         }
@@ -55,6 +59,7 @@ func facts(_ d: Details?, group: String) -> String {
 
 struct SeriesDetailView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.compactWidth) private var compact
     let series: Series
     @State private var data: SeriesData?
     @State private var failed: String?
@@ -64,12 +69,13 @@ struct SeriesDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Artwork(url: data?.details.backdrop ?? series.cover, title: "")
-                    .frame(height: 300)
+                    .frame(height: compact ? 230 : 300)
+                    .clipped()
                     .overlay(LinearGradient(colors: [.clear, Theme.background], startPoint: .center, endPoint: .bottom))
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(series.name).font(.largeTitle.weight(.bold))
+                    Text(series.name).font((compact ? Font.title : .largeTitle).weight(.bold)).accessibilityAddTraits(.isHeader)
                     Text(facts(data?.details, group: series.group)).foregroundStyle(Theme.muted)
-                    HStack(spacing: 12) {
+                    ActionButtons {
                         if let (s, i) = resumeAt {
                             let ep = data!.seasons[s].episodes[i]
                             let started = Playback.resumePosition(app.progressOf(ep.url)) > 0
@@ -78,42 +84,30 @@ struct SeriesDetailView: View {
                             }
                             .buttonStyle(.borderedProminent)
                         }
+                    } rest: {
                         let fav = app.isFavourite(.series, series.id)
                         Button { app.toggleFavourite(.series, series.id) } label: { Label(fav ? "In My List" : "My List", systemImage: fav ? "checkmark" : "plus") }
                             .buttonStyle(.bordered)
                     }
                     if let plot = data?.details.plot ?? series.plot { Text(plot).frame(maxWidth: 680, alignment: .leading) }
                 }
-                .padding(.horizontal, 28)
+                .padding(.horizontal, compact ? 16 : 28)
                 if let data {
-                    HStack(spacing: 16) {
-                        if data.seasons.count > 1 {
-                            Picker("Season", selection: $season) {
-                                ForEach(data.seasons.indices, id: \.self) { Text(data.seasons[$0].name).tag($0) }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-                        if data.seasons.indices.contains(season), let id = app.activeId,
-                           data.seasons[season].episodes.contains(where: { Downloads.canDownload($0.url) && Downloads.shared.item(id, $0.url) == nil }) {
-                            Button {
-                                for ep in data.seasons[season].episodes {
-                                    Downloads.shared.add(providerId: id, ep, kind: .episode, show: series.name, seriesId: series.id, art: series.cover)
-                                }
-                            } label: { Label("Download season", systemImage: "arrow.down.circle") }
-                            .buttonStyle(.bordered)
-                        }
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 16) { seasonControls(data) }
+                        VStack(alignment: .leading, spacing: 12) { seasonControls(data) }
                     }
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, compact ? 16 : 28)
                     if data.seasons.indices.contains(season) {
                         LazyVStack(spacing: 2) {
                             ForEach(Array(data.seasons[season].episodes.enumerated()), id: \.element.id) { i, ep in
                                 EpisodeRow(episode: ep, series: series) { app.playEpisode(series, data.seasons[season].episodes, i) }
                             }
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, compact ? 8 : 20)
                     }
                 } else {
-                    Text(failed ?? "Loading episodes…").foregroundStyle(Theme.muted).padding(.horizontal, 28)
+                    Text(failed ?? "Loading episodes…").foregroundStyle(Theme.muted).padding(.horizontal, compact ? 16 : 28)
                 }
             }
             .padding(.bottom, 40)
@@ -121,6 +115,25 @@ struct SeriesDetailView: View {
         .ignoresSafeArea(edges: .top)
         .noBarTitle()
         .task(id: series.id) { await load() }
+    }
+
+    @ViewBuilder private func seasonControls(_ data: SeriesData) -> some View {
+        if data.seasons.count > 1 {
+            let picker = Picker("Season", selection: $season) {
+                ForEach(data.seasons.indices, id: \.self) { Text(data.seasons[$0].name).tag($0) }
+            }
+            // Segments while they fit; a menu on a phone or for a long-running series.
+            if compact || data.seasons.count > 5 { picker.pickerStyle(.menu).fixedSize() } else { picker.pickerStyle(.segmented) }
+        }
+        if data.seasons.indices.contains(season), let id = app.activeId,
+           data.seasons[season].episodes.contains(where: { Downloads.canDownload($0.url) && Downloads.shared.item(id, $0.url) == nil }) {
+            Button {
+                for ep in data.seasons[season].episodes {
+                    Downloads.shared.add(providerId: id, ep, kind: .episode, show: series.name, seriesId: series.id, art: series.cover)
+                }
+            } label: { Label("Download season", systemImage: "arrow.down.circle") }
+            .buttonStyle(.bordered)
+        }
     }
 
     /** The episode to resume: from history, else the first. */
@@ -154,6 +167,7 @@ struct SeriesDetailView: View {
 
 private struct EpisodeRow: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.compactWidth) private var compact
     let episode: Channel
     let series: Series
     let play: () -> Void
@@ -161,20 +175,20 @@ private struct EpisodeRow: View {
     var body: some View {
         let p = app.progressOf(episode.url)
         Button(action: play) {
-            HStack(alignment: .top, spacing: 16) {
+            HStack(alignment: .top, spacing: compact ? 12 : 16) {
                 Artwork(url: episode.logo, title: "")
-                    .frame(width: 200, height: 112)
+                    .frame(width: compact ? 128 : 200, height: compact ? 72 : 112)
                     .overlay(alignment: .bottom) { if let p, !p.finished { ProgressBar(fraction: p.fraction).padding(8) } }
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(episode.name).font(.headline).lineLimit(2)
+                    Text(episode.name).font(compact ? .subheadline.weight(.semibold) : .headline).lineLimit(2)
                     HStack(spacing: 8) {
                         if let r = episode.runtime { Text(r) }
                         if let p, p.finished { Text("✓ Watched").foregroundStyle(Theme.accent) }
                         else if let p, Playback.resumePosition(p) > 0 { Text("\(p.minutesLeft) min left") }
                     }
                     .font(.caption).foregroundStyle(Theme.muted)
-                    if let plot = episode.plot { Text(plot).font(.callout).foregroundStyle(Theme.muted).lineLimit(3) }
+                    if let plot = episode.plot { Text(plot).font(compact ? .caption : .callout).foregroundStyle(Theme.muted).lineLimit(compact ? 2 : 3) }
                 }
                 Spacer(minLength: 0)
             }

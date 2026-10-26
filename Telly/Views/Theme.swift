@@ -5,7 +5,8 @@ enum Theme {
     static let background = Color(red: 0x0E / 255, green: 0x11 / 255, blue: 0x16 / 255)
     static let surface = Color.white.opacity(0.06)
     static let muted = Color.white.opacity(0.62)
-    static let faint = Color.white.opacity(0.4)
+    /** 55%: at 40% small text fell short of the 4.5:1 contrast it needs on the background. */
+    static let faint = Color.white.opacity(0.55)
     static let cardRadius: CGFloat = 12
 }
 
@@ -45,7 +46,7 @@ struct Artwork: View {
         return LinearGradient(colors: [Color(hue: hue, saturation: 0.45, brightness: 0.45), Color(hue: hue, saturation: 0.4, brightness: 0.16)],
                               startPoint: .topLeading, endPoint: .bottomTrailing)
             .overlay(alignment: .bottomLeading) {
-                Text(title).font(.system(size: 15, weight: .heavy)).foregroundStyle(.white.opacity(0.85)).lineLimit(3).padding(10)
+                Text(title).font(.subheadline.weight(.heavy)).foregroundStyle(.white.opacity(0.85)).lineLimit(3).padding(10)
             }
     }
 }
@@ -63,12 +64,31 @@ struct ProgressBar: View {
     }
 }
 
+/** Card sizes for the width a page has: smaller on a phone (see HomeView), exact in a grid. */
+private struct CardScaleKey: EnvironmentKey { static let defaultValue: CGFloat = 1 }
+private struct PosterWidthKey: EnvironmentKey { static let defaultValue: CGFloat? = nil }
+extension EnvironmentValues {
+    var cardScale: CGFloat {
+        get { self[CardScaleKey.self] }
+        set { self[CardScaleKey.self] = newValue }
+    }
+    /** Set by a grid so each poster fills its column. */
+    var posterWidth: CGFloat? {
+        get { self[PosterWidthKey.self] }
+        set { self[PosterWidthKey.self] = newValue }
+    }
+}
+
 /** A 2:3 poster for films and series. */
 struct PosterCard: View {
+    @Environment(\.cardScale) private var scale
+    @Environment(\.posterWidth) private var gridWidth
     let title: String
     let image: String?
     var progress: Double?
-    var width: CGFloat = 150
+    var fixedWidth: CGFloat?
+
+    private var width: CGFloat { fixedWidth ?? gridWidth ?? 150 * scale }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -80,17 +100,23 @@ struct PosterCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius))
             Text(title).font(.footnote).foregroundStyle(Theme.muted).lineLimit(1).frame(width: width, alignment: .leading)
         }
+        // VoiceOver reads a card as one thing: its name, and how much is watched.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(progress.map { "\(Int(($0 * 100).rounded())) percent watched" } ?? "")
     }
 }
 
 /** A 16:9 card with a caption, for Continue watching. */
 struct LandscapeCard: View {
+    @Environment(\.cardScale) private var scale
     let title: String
     let subtitle: String
     let image: String?
     var badge: String?
     var progress: Double?
-    var width: CGFloat = 300
+
+    private var width: CGFloat { 300 * scale }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -110,19 +136,24 @@ struct LandscapeCard: View {
             Text(subtitle).font(.caption).foregroundStyle(Theme.muted).lineLimit(1)
         }
         .frame(width: width, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([title, subtitle, badge].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityValue(progress.map { "\(Int(($0 * 100).rounded())) percent watched" } ?? "")
     }
 }
 
 /** A titled, horizontally scrolling row. */
 struct Shelf<Content: View>: View {
+    @Environment(\.compactWidth) private var compact
     let title: String
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.title3.weight(.semibold)).padding(.horizontal, 24)
+            Text(title).font(.title3.weight(.semibold)).padding(.horizontal, pageInset(compact))
+                .accessibilityAddTraits(.isHeader)
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 16) { content }.padding(.horizontal, 24)
+                LazyHStack(alignment: .top, spacing: compact ? 12 : 16) { content }.padding(.horizontal, pageInset(compact))
             }
         }
     }

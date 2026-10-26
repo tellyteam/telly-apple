@@ -85,6 +85,10 @@ struct TellyCommands: Commands {
 #if os(iOS)
 /** Hands iOS's "background downloads have news" call to the downloads session. */
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        MainActor.assumeIsolated { Device.orientations }
+    }
+
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
         guard identifier == Downloads.sessionId else { return completionHandler() }
         Downloads.shared.backgroundEventsDone = completionHandler

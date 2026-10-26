@@ -19,6 +19,7 @@ enum Page: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.compactWidth) private var compact
     @State private var linkError: String?
 
     var body: some View {
@@ -28,6 +29,8 @@ struct RootView: View {
                 Wordmark(height: 62).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if app.provider == nil {
                 SetupView()
+            } else if compact {
+                PhoneTabs()
             } else {
                 NavigationSplitView {
                     List(selection: $app.page) {
@@ -138,6 +141,93 @@ struct RootView: View {
         case .downloads: DownloadsView()
         case .settings: SettingsView()
         }
+    }
+}
+
+/**
+ * A narrow width (iPhone, or an iPad in a narrow Split View): a tab bar instead of the sidebar.
+ * Films and Series share Browse; Downloads and Settings open from Home.
+ */
+private struct PhoneTabs: View {
+    @Environment(AppModel.self) private var app
+    @State private var tab: Tab = .home
+
+    enum Tab: String, Hashable { case home, live, browse, myList = "mylist", search }
+
+    var body: some View {
+        TabView(selection: $tab) {
+            stack { home }
+                .tabItem { Label("Home", systemImage: "house") }.tag(Tab.home)
+            stack { LiveView() }
+                .tabItem { Label("Live TV", systemImage: "tv") }.tag(Tab.live)
+            if app.provider?.isXtream == true {
+                stack { BrowseView() }
+                    .tabItem { Label("Browse", systemImage: "film") }.tag(Tab.browse)
+            }
+            stack { MyListView() }
+                .tabItem { Label("My List", systemImage: "heart") }.tag(Tab.myList)
+            stack { SearchView() }
+                .tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(Tab.search)
+        }
+        // Switching or adding a provider goes back to Home, as the sidebar does.
+        .onChange(of: app.page) { _, page in if page == .home { tab = .home } }
+        #if DEBUG
+        .onAppear { if let t = DevHooks.env["TELLY_DEV_TAB"].flatMap(Tab.init) { tab = t } }
+        #endif
+    }
+
+    @ViewBuilder private var home: some View {
+        #if DEBUG
+        HomeView().toolbar { homeButtons }.devOpen()
+        #else
+        HomeView().toolbar { homeButtons }
+        #endif
+    }
+
+    private func stack<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        NavigationStack {
+            content()
+                .scrollContentBackground(.hidden)
+                .background(Theme.background.ignoresSafeArea())
+                .navigationDestination(for: Page.self) { page in
+                    Group {
+                        switch page {
+                        case .downloads: DownloadsView()
+                        default: SettingsView()
+                        }
+                    }
+                    .scrollContentBackground(.hidden)
+                    .background(Theme.background.ignoresSafeArea())
+                }
+        }
+    }
+
+    @ToolbarContentBuilder private var homeButtons: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            if Downloads.available && app.provider?.isXtream == true {
+                NavigationLink(value: Page.downloads) { Label("Downloads", systemImage: Page.downloads.icon) }
+            }
+            NavigationLink(value: Page.settings) { Label("Settings", systemImage: Page.settings.icon) }
+        }
+    }
+}
+
+/** Films and series in one tab at a narrow width, switched at the top. */
+struct BrowseView: View {
+    @State private var series = false
+
+    var body: some View {
+        Group { if series { SeriesListView() } else { FilmsView() } }
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Picker("Browse", selection: $series) {
+                        Text("Films").tag(false)
+                        Text("Series").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                }
+            }
     }
 }
 

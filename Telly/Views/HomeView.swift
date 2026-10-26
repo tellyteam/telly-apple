@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.compactWidth) private var compact
 
     var body: some View {
         ScrollView {
@@ -13,7 +14,7 @@ struct HomeView: View {
                              ? "Pick something from Live TV, Series or Films, and it'll show up here next time."
                              : "Pick something from Live TV, and it'll show up here next time.").foregroundStyle(Theme.muted)
                     }
-                    .padding(.horizontal, 24).padding(.top, 20)
+                    .padding(.horizontal, pageInset(compact)).padding(.top, 20)
                 }
                 if !app.continueWatching.isEmpty {
                     Shelf(title: "Continue watching") {
@@ -61,14 +62,17 @@ struct HomeView: View {
                         }
                     }
                 }
-                if let error = app.loadError { Text(error).foregroundStyle(.orange).padding(.horizontal, 24) }
+                if let error = app.loadError { Text(error).foregroundStyle(.orange).padding(.horizontal, pageInset(compact)) }
             }
             .padding(.bottom, 40)
+            // Smaller cards on a phone, so a row shows more than two.
+            .environment(\.cardScale, compact ? 0.78 : 1)
         }
         .refreshable { await app.refresh() }
         .navigationTitle("")
         .inlineTitle()
-        .ignoresSafeArea(edges: .top)
+        // Only the billboard's artwork runs up under the status bar; without one, Home starts below it.
+        .ignoresSafeArea(edges: app.continueWatching.isEmpty ? [] : .top)
         .background(Theme.background.ignoresSafeArea())
         // A see-through bar rather than none, so the sidebar button stays.
         .clearBar()
@@ -79,6 +83,7 @@ struct HomeView: View {
 /** The big "pick up where you left off" banner. */
 private struct Hero: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.compactWidth) private var compact
     let entry: LastWatched
 
     var body: some View {
@@ -87,20 +92,20 @@ private struct Hero: View {
         ZStack(alignment: .bottomLeading) {
             // Runs up under the status bar, so the top of the screen matches the rest of Home.
             ZStack { if let art = entry.art ?? item.logo { Artwork(url: art, title: "") } }
-                .frame(maxWidth: .infinity).frame(height: 340)
+                .frame(maxWidth: .infinity).frame(height: compact ? 260 : 340)
                 .clipped()
                 .background(LinearGradient(colors: [Theme.accent.opacity(0.18), Theme.background], startPoint: .topTrailing, endPoint: .bottomLeading))
                 .overlay(LinearGradient(colors: [.clear, Theme.background], startPoint: .top, endPoint: .bottom))
                 .overlay(LinearGradient(colors: [Theme.background.opacity(0.9), .clear], startPoint: .leading, endPoint: .trailing))
             VStack(alignment: .leading, spacing: 8) {
                 Text("PICK UP WHERE YOU LEFT OFF").font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
-                Text(entry.isFilm || entry.live ? item.name : entry.heading).font(.largeTitle.weight(.bold)).lineLimit(2)
+                Text(entry.isFilm || entry.live ? item.name : entry.heading).font((compact ? Font.title : .largeTitle).weight(.bold)).lineLimit(2)
                 Text(subtitle(entry)).foregroundStyle(Theme.muted)
                 if let p { ProgressBar(fraction: p.fraction).frame(width: 240) }
                 Button { app.resume(entry) } label: { Label(p.map { Playback.resumePosition($0) > 0 } == true ? "Resume" : "Play", systemImage: "play.fill") }
                     .buttonStyle(.borderedProminent).padding(.top, 4)
             }
-            .padding(24)
+            .padding(pageInset(compact))
         }
     }
 }
@@ -137,6 +142,7 @@ private struct ContinueCard: View {
  */
 struct ChannelTile: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.cardScale) private var scale
     let channel: Channel
     @State private var image: CGImage?
 
@@ -153,10 +159,12 @@ struct ChannelTile: View {
                     Artwork(url: nil, title: channel.name).placeholder
                 }
             }
-            .frame(width: 200, height: 112)
+            .frame(width: 200 * scale, height: 112 * scale)
             .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius))
-            Text(channel.name).font(.footnote).foregroundStyle(Theme.muted).lineLimit(1).frame(width: 200, alignment: .leading)
+            Text(channel.name).font(.footnote).foregroundStyle(Theme.muted).lineLimit(1).frame(width: 200 * scale, alignment: .leading)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(channel.name)
         .task(id: channel.logo) {
             guard let url = Artwork.allowed(channel.logo, app) else { return }
             image = await ArtCache.image(url, providerId: app.activeId)

@@ -9,8 +9,8 @@ import AppKit
 /** What differs between the iPad and Mac apps, so the shared views don't have to. */
 enum Device {
     #if os(iOS)
-    /** As the user calls this device: "on this iPad". */
-    static let name = "iPad"
+    /** As the user calls this device: "on this iPad", "on this iPhone". */
+    @MainActor static var name: String { UIDevice.current.userInterfaceIdiom == .phone ? "iPhone" : "iPad" }
     static let userAgent = "telly-ipad"
     #else
     static let name = "Mac"
@@ -39,6 +39,30 @@ enum Device {
         #endif
     }
 
+    /**
+     * On iPhone: turns the screen to landscape for watching ([watching] true), and back to
+     * portrait after. An iPad (and a Mac) stays as it is.
+     */
+    @MainActor static func watchingOrientation(_ watching: Bool) {
+        #if os(iOS)
+        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
+        // What the app allows (AppDelegate asks): only landscape while watching.
+        orientations = watching ? .landscape : .allButUpsideDown
+        // After the player's presentation has settled: asked during it, iOS ignores the request.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
+            for window in scene.windows { window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations() }
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: watching ? .landscape : .portrait)) { _ in }
+        }
+        #endif
+    }
+
+    #if os(iOS)
+    /** The orientations the app allows now (see [watchingOrientation]). */
+    @MainActor static var orientations: UIInterfaceOrientationMask = .all
+    #endif
+
     /** Keeps the screen awake while something plays. */
     @MainActor static func keepAwake(_ on: Bool) {
         #if os(iOS)
@@ -56,6 +80,42 @@ enum Device {
     #if os(macOS)
     @MainActor private static var awake: NSObjectProtocol?
     #endif
+}
+
+extension EnvironmentValues {
+    /**
+     * A narrow width: an iPhone, or an iPad in a narrow Split View. Pages lay out for the width
+     * they have, not the device (tabs instead of the sidebar, one column instead of two).
+     */
+    var compactWidth: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
+}
+
+/** A page's side margin: tighter at a narrow width. */
+func pageInset(_ compact: Bool) -> CGFloat { compact ? 16 : 24 }
+
+/**
+ * A page's buttons in one line when they fit, else the first on its own line and the rest below,
+ * so none is ever squashed.
+ */
+struct ActionButtons<Primary: View, Rest: View>: View {
+    @ViewBuilder let primary: Primary
+    @ViewBuilder let rest: Rest
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) { primary.fixedSize(); Group { rest }.fixedSize() }
+            VStack(alignment: .leading, spacing: 12) {
+                primary.fixedSize()
+                ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 12) { Group { rest }.fixedSize() } }
+            }
+        }
+    }
 }
 
 extension View {

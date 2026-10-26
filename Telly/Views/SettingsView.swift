@@ -147,7 +147,7 @@ private struct SyncSection: View {
                             Image(cgImage: qr).interpolation(.none).resizable().frame(width: 150, height: 150)
                                 .padding(10).background(.white, in: RoundedRectangle(cornerRadius: 10))
                         }
-                        Text(SyncCrypto.formatCode(config.code)).font(.system(size: 28, weight: .semibold, design: .monospaced)).textSelection(.enabled)
+                        Text(SyncCrypto.formatCode(config.code)).font(.system(.title, design: .monospaced).weight(.semibold)).textSelection(.enabled)
                     }
                 }
                 Button(app.syncBusy ? "Syncing…" : "Sync now") { Task { await app.syncNow(force: true) } }.disabled(app.syncBusy)

@@ -108,6 +108,9 @@ final class AppModel {
             .flatMap { SyncCrypto.normaliseCode($0.code) != nil ? SyncConfig(code: $0.code, device: $0.device, relay: Self.relay) : nil }
         providers = loadProviders()
         guard let active = providers.first(where: { $0.id == meta.activeProvider }) ?? providers.first else {
+            #if DEBUG
+            await DevHooks.signIn(self)
+            #endif
             ready = true
             return
         }

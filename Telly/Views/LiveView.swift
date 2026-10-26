@@ -3,25 +3,15 @@ import SwiftUI
 /** Categories on the left, their channels on the right; tap a channel to watch. */
 struct LiveView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.compactWidth) private var compact
     @State private var group: String?
     @State private var filter = ""
 
     var body: some View {
         let groups = app.live ?? []
         HStack(spacing: 0) {
-            List(selection: $group) {
-                if !app.favouriteItems().live.isEmpty { Label("Favourites", systemImage: "star.fill").tag(Self.favourites) }
-                if !groups.isEmpty {
-                    HStack { Text("All channels"); Spacer(); Text("\(Self.everything(groups).count)").foregroundStyle(Theme.faint).font(.caption) }
-                        .tag(Self.all)
-                }
-                ForEach(groups) { g in
-                    HStack { Text(g.name).lineLimit(1); Spacer(); Text("\(g.items.count)").foregroundStyle(Theme.faint).font(.caption) }.tag(g.name)
-                }
-            }
-            .listStyle(.plain)
-            .frame(width: 300)
-            Divider()
+            // At a narrow width the categories are a menu in the bar instead.
+            if !compact { categories(groups); Divider() }
             let channels = shown(groups)
             if app.live == nil {
                 Message(title: app.refreshing ? "Loading channels…" : "No channels yet", detail: app.loadError)
@@ -37,8 +27,36 @@ struct LiveView: View {
         }
         .navigationTitle(group == Self.favourites ? "Favourites" : group == Self.all ? "All channels" : group ?? "Live TV")
         .inlineTitle()
+        .toolbar { if compact, !groups.isEmpty { ToolbarItem(placement: .primaryAction) { groupMenu(groups) } } }
         // All, so the filter searches every channel from the start.
         .onAppear { if group == nil { group = Self.all } }
+    }
+
+    private func groupMenu(_ groups: [ItemGroup<Channel>]) -> some View {
+        Menu {
+            Picker("Category", selection: $group) {
+                if !app.favouriteItems().live.isEmpty { Label("Favourites", systemImage: "star.fill").tag(Optional(Self.favourites)) }
+                Text("All channels").tag(Optional(Self.all))
+                ForEach(groups) { g in Text(g.name).tag(Optional(g.name)) }
+            }
+        } label: {
+            Label("Categories", systemImage: "line.3.horizontal.decrease.circle")
+        }
+    }
+
+    private func categories(_ groups: [ItemGroup<Channel>]) -> some View {
+            List(selection: $group) {
+                if !app.favouriteItems().live.isEmpty { Label("Favourites", systemImage: "star.fill").tag(Self.favourites) }
+                if !groups.isEmpty {
+                    HStack { Text("All channels"); Spacer(); Text("\(Self.everything(groups).count)").foregroundStyle(Theme.faint).font(.caption) }
+                        .tag(Self.all)
+                }
+                ForEach(groups) { g in
+                    HStack { Text(g.name).lineLimit(1); Spacer(); Text("\(g.items.count)").foregroundStyle(Theme.faint).font(.caption) }.tag(g.name)
+                }
+            }
+            .listStyle(.plain)
+            .frame(width: 300)
     }
 
     private static let favourites = "\u{1}favourites"
