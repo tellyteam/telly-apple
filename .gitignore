@@ -1,0 +1,10 @@
+.DS_Store
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+# VLCKit and Sparkle are fetched by scripts/fetch-vendor.sh, not committed
+Vendor/
+# Paid extras, copied in by scripts/plus.sh from the private telly-apple-plus repo
+Telly/PlusPrivate/
+TellyTests/PlusPrivate/
