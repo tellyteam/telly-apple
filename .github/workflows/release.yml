@@ -75,7 +75,7 @@ jobs:
         run: gh release create "$GITHUB_REF_NAME" telly-mac.zip appcast.xml --title "telly for Mac $VERSION" --notes-file notes.md
       - name: Keep the dry run's files
         if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: telly-mac-dry-run
           path: |
