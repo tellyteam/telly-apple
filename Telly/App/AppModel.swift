@@ -514,9 +514,8 @@ final class AppModel {
     }
 
     /** Links with a confirmed QR code; scanning one also shows Settings → Sync from then on. */
-    func confirmPendingLink() async throws {
-        guard let link = pendingLink else { return }
-        pendingLink = nil
+    func confirmLink(_ link: PendingLink) async throws {
+        if pendingLink == link { pendingLink = nil }
         meta.syncUnlocked = true
         Store.write("meta", meta)
         try await startSync(code: link.code)

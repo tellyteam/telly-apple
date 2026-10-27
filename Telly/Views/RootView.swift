@@ -89,8 +89,10 @@ struct RootView: View {
         #endif
         .alert("Link this \(Device.name) for sync?", isPresented: Binding(get: { app.pendingLink != nil && app.provider != nil }, set: { if !$0 { app.pendingLink = nil } })) {
             Button("Link") {
+                // Taken now: closing the alert clears the pending link before the task runs.
+                guard let link = app.pendingLink else { return }
                 Task {
-                    do { try await app.confirmPendingLink() } catch { linkError = error.localizedDescription }
+                    do { try await app.confirmLink(link) } catch { linkError = error.localizedDescription }
                 }
             }
             Button("Cancel", role: .cancel) { app.pendingLink = nil }
