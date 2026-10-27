@@ -178,6 +178,19 @@ extension View {
         #endif
     }
 
+    /** No bar at all, nor the shade iOS 26 puts under one: the page runs to the top of the screen. */
+    @ViewBuilder func hiddenBar() -> some View {
+        #if os(iOS)
+        if #available(iOS 26, *) {
+            toolbar(.hidden, for: .navigationBar).scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            toolbar(.hidden, for: .navigationBar)
+        }
+        #else
+        self
+        #endif
+    }
+
     /** Text that isn't prose: addresses, logins, codes. No capitals or corrections added. */
     func plainEntry(url: Bool = false, capitals: Bool = false) -> some View {
         #if os(iOS)

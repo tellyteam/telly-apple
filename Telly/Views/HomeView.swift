@@ -3,20 +3,23 @@ import SwiftUI
 struct HomeView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.compactWidth) private var compact
-    /** On an iPhone held sideways: Downloads and Settings as a row at the bottom, not at the top. */
-    var shortcutsAtBottom = false
+    /** On iPhone: Downloads and Settings as small icons at the top right, with no bar for them. */
+    var shortcuts = false
 
     var body: some View {
+        // No billboard on iPhone: Continue watching, first, shows the same.
+        let hero = shortcuts ? nil : app.continueWatching.first
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
-                if let hero = app.continueWatching.first { Hero(entry: hero) } else {
+                if let hero { Hero(entry: hero) } else if app.continueWatching.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Welcome to telly").font(.largeTitle.weight(.bold))
                         Text(app.provider?.isXtream == true
                              ? "Pick something from Live TV, Series or Films, and it'll show up here next time."
                              : "Pick something from Live TV, and it'll show up here next time.").foregroundStyle(Theme.muted)
                     }
-                    .padding(.horizontal, pageInset(compact)).padding(.top, 20)
+                    // Below Downloads and Settings, when they're over the top.
+                    .padding(.horizontal, pageInset(compact)).padding(.top, shortcuts ? 60 : 20)
                 }
                 if !app.continueWatching.isEmpty {
                     Shelf(title: "Continue watching") {
@@ -65,15 +68,14 @@ struct HomeView: View {
                     }
                 }
                 if let error = app.loadError { Text(error).foregroundStyle(.orange).padding(.horizontal, pageInset(compact)) }
-                if shortcutsAtBottom {
-                    HStack(spacing: 12) {
-                        if Downloads.available && app.provider?.isXtream == true {
-                            NavigationLink(value: Page.downloads) { Label("Downloads", systemImage: Page.downloads.icon) }.buttonStyle(.bordered)
-                        }
-                        NavigationLink(value: Page.settings) { Label("Settings", systemImage: Page.settings.icon) }.buttonStyle(.bordered)
+            }
+            .overlay(alignment: .topTrailing) {
+                if shortcuts {
+                    HStack(spacing: 10) {
+                        if Downloads.available && app.provider?.isXtream == true { ShortcutIcon(page: .downloads) }
+                        ShortcutIcon(page: .settings)
                     }
-                    .tint(.white)
-                    .padding(.horizontal, pageInset(compact))
+                    .padding(.trailing, pageInset(compact))
                 }
             }
             .padding(.bottom, 40)
@@ -84,7 +86,7 @@ struct HomeView: View {
         .navigationTitle("")
         .inlineTitle()
         // Only the billboard's artwork runs up under the status bar; without one, Home starts below it.
-        .ignoresSafeArea(edges: app.continueWatching.isEmpty ? [] : .top)
+        .ignoresSafeArea(edges: hero == nil ? [] : .top)
         .background(Theme.background.ignoresSafeArea())
         // A see-through bar rather than none, so the sidebar button stays.
         .clearBar()
@@ -119,6 +121,23 @@ private struct Hero: View {
             }
             .padding(pageInset(compact))
         }
+    }
+}
+
+/** Downloads or Settings over the top of Home: an icon on a dark disc, legible over any artwork. */
+private struct ShortcutIcon: View {
+    let page: Page
+
+    var body: some View {
+        NavigationLink(value: page) {
+            Image(systemName: page.icon)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(.black.opacity(0.4), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(page.rawValue)
     }
 }
 
