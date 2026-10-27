@@ -23,6 +23,17 @@ enum CatalogCache {
         try? Data(contentsOf: file(scope, name))
     }
 
+    /** The start of a saved file, for its header, without reading the rest. */
+    static func readPrefix(_ scope: String, _ name: String, _ count: Int = 256) -> Data? {
+        guard let h = try? FileHandle(forReadingFrom: file(scope, name)) else { return nil }
+        defer { try? h.close() }
+        return try? h.read(upToCount: count)
+    }
+
+    static func delete(_ scope: String, _ name: String) {
+        try? FileManager.default.removeItem(at: file(scope, name))
+    }
+
     static func write(_ scope: String, _ name: String, _ data: Data) {
         let url = file(scope, name)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

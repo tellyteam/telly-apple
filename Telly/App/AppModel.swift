@@ -19,7 +19,8 @@ struct Settings: Codable, Equatable {
 }
 
 struct Meta: Codable, Equatable {
-    var updatedAt: Double?
+    /** When each saved provider's lists were last fetched, by [SavedProvider.id]. */
+    var listsUpdated: [String: Double]?
     /** Sync is hidden until unlocked (seven taps on the version in Settings). */
     var syncUnlocked: Bool?
     /** The saved provider in use ([SavedProvider.id]). */
@@ -67,9 +68,15 @@ final class AppModel {
     var provider: Provider?
     /** The [SavedProvider.id] of [provider]. */
     var activeId: String?
-    var live: [ItemGroup<Channel>]?
-    var films: [ItemGroup<Channel>]?
-    var series: [ItemGroup<Series>]?
+    /** The provider's lists, each with what's worked out from it (see [Catalogue]). */
+    private(set) var liveCatalogue: Catalogue<Channel>?
+    private(set) var filmCatalogue: Catalogue<Channel>?
+    private(set) var seriesCatalogue: Catalogue<Series>?
+    var live: [ItemGroup<Channel>]? { liveCatalogue?.groups }
+    var films: [ItemGroup<Channel>]? { filmCatalogue?.groups }
+    var series: [ItemGroup<Series>]? { seriesCatalogue?.groups }
+    /** Bumped for each list as it's replaced, so a slower, older update never lands after a newer one. */
+    @ObservationIgnored private var catalogueTurn = 0
     var refreshing = false
     @ObservationIgnored private var refreshingFor: Provider?
     var loadError: String?
@@ -92,9 +99,6 @@ final class AppModel {
     var syncError: String?
     private var ledger = SyncLedger()
 
-    @ObservationIgnored private var liveById: [String: Channel] = [:]
-    @ObservationIgnored private var filmById: [String: Channel] = [:]
-    @ObservationIgnored private var seriesById: [String: Series] = [:]
     @ObservationIgnored private var syncSoonTask: Task<Void, Never>?
 
     var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0" }
@@ -153,8 +157,7 @@ final class AppModel {
         seedWatched()
         meta.activeProvider = saved.id
         Store.write("meta", meta)
-        live = nil; films = nil; series = nil
-        setCatalogues(nil, nil, nil)
+        clearCatalogues()
         await use(saved.provider)
     }
 
@@ -165,55 +168,90 @@ final class AppModel {
         await activate(saved)
     }
 
-    /** Shows the saved lists straight away, then refreshes them in the background. */
-    private func use(_ p: Provider) async {
+    /** Lists older than this are fetched again when telly opens; the Refresh button fetches them any time. */
+    private static let listsStaleMs: Double = 12 * 3_600_000
+
+    /** When the provider in use's lists were last fetched. */
+    var listsUpdatedAt: Double? { activeId.flatMap { meta.listsUpdated?[$0] } }
+
+    /**
+     * Shows each saved list as soon as it's read, without holding up Home, then fetches them again
+     * if they're old (PLAYBACK.md, Lists).
+     */
+    private func use(_ p: Provider, refreshing always: Bool = false) async {
         provider = p
         HTTP.shared.allowCleartext = p.allowCleartext
-        async let l = try? Repo.liveGroups(p, .cache)
-        async let f = try? Repo.filmGroups(p, .cache)
-        async let s = try? Repo.seriesGroups(p, .cache)
-        setCatalogues(await l ?? nil, await f ?? nil, await s ?? nil)
         Task {
-            await refresh()
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { if let l = try? await Repo.liveGroups(p, .cache) { await self.setLive(l, for: p) } }
+                group.addTask { if let f = try? await Repo.filmGroups(p, .cache) { await self.setFilms(f, for: p) } }
+                group.addTask { if let s = try? await Repo.seriesGroups(p, .cache) { await self.setSeries(s, for: p) } }
+            }
+            guard provider == p else { return }
+            if always || live == nil || listsUpdatedAt.map({ nowMs() - $0 >= Self.listsStaleMs }) ?? true { await refresh() }
             await syncNow()
         }
     }
 
-    private func setCatalogues(_ l: [ItemGroup<Channel>]?, _ f: [ItemGroup<Channel>]?, _ s: [ItemGroup<Series>]?) {
-        if let l {
-            live = l
-            liveById = Dictionary(l.flatMap { $0.items.map { ($0.id, $0) } }, uniquingKeysWith: { a, _ in a })
-        }
-        if let f {
-            films = f
-            filmById = Dictionary(f.flatMap { $0.items.map { ($0.id, $0) } }, uniquingKeysWith: { a, _ in a })
-        }
-        if let s {
-            series = s
-            seriesById = Dictionary(s.flatMap { $0.items.map { ($0.id, $0) } }, uniquingKeysWith: { a, _ in a })
-        }
-        searchIndex = nil
+    // Each list is prepared off the main thread and only swapped in here; the list it replaces is
+    // freed off the main thread too (freeing a big catalogue takes as long as building it).
+
+    private func setLive(_ groups: [ItemGroup<Channel>], for p: Provider) async {
+        let turn = catalogueTurn
+        let c = await Task.detached(priority: .userInitiated) { Catalogue(groups) }.value
+        guard provider == p, turn == catalogueTurn else { return }
+        Self.letGo(liveCatalogue)
+        liveCatalogue = c
     }
 
+    private func setFilms(_ groups: [ItemGroup<Channel>], for p: Provider) async {
+        let turn = catalogueTurn
+        let c = await Task.detached(priority: .userInitiated) { Catalogue(groups) }.value
+        guard provider == p, turn == catalogueTurn else { return }
+        Self.letGo(filmCatalogue)
+        filmCatalogue = c
+    }
+
+    private func setSeries(_ groups: [ItemGroup<Series>], for p: Provider) async {
+        let turn = catalogueTurn
+        let c = await Task.detached(priority: .userInitiated) { Catalogue(groups) }.value
+        guard provider == p, turn == catalogueTurn else { return }
+        Self.letGo(seriesCatalogue)
+        seriesCatalogue = c
+    }
+
+    private func clearCatalogues() {
+        catalogueTurn += 1
+        let old = (liveCatalogue, filmCatalogue, seriesCatalogue)
+        (liveCatalogue, filmCatalogue, seriesCatalogue) = (nil, nil, nil)
+        Self.letGo(old)
+    }
+
+    /** Frees [old] on a background thread: the caller must already have stopped using it. */
+    private nonisolated static func letGo<T: Sendable>(_ old: T) {
+        Task.detached(priority: .background) { withExtendedLifetime(old) {} }
+    }
+
+    /** Fetches the lists again, one at a time, each shown as it arrives; an unchanged one is skipped. */
     func refresh() async {
-        guard let p = provider, refreshingFor != p else { return }
+        guard let p = provider, let id = activeId, refreshingFor != p else { return }
         // A refresh for the provider switched away from may still be running; this one replaces it.
         refreshing = true
         refreshingFor = p
         defer { if refreshingFor == p { refreshing = false; refreshingFor = nil } }
         loadError = nil
-        async let l = Result.of { try await Repo.liveGroups(p, .network) }
-        async let f = Result.of { try await Repo.filmGroups(p, .network) }
-        async let s = Result.of { try await Repo.seriesGroups(p, .network) }
-        let (lr, fr, sr) = await (l, f, s)
+        var failure: Error?
+        do { if let l = try await Repo.liveGroups(p, .network) { await setLive(l, for: p) } } catch { failure = failure ?? error }
         guard provider == p else { return }
-        setCatalogues(try? lr.get(), try? fr.get(), try? sr.get())
-        let failure = [lr.failure, fr.failure, sr.failure].compactMap { $0 }.first
+        do { if let f = try await Repo.filmGroups(p, .network) { await setFilms(f, for: p) } } catch { failure = failure ?? error }
+        guard provider == p else { return }
+        do { if let s = try await Repo.seriesGroups(p, .network) { await setSeries(s, for: p) } } catch { failure = failure ?? error }
+        guard provider == p else { return }
         if let failure {
             // Only an error worth a screen when there's nothing saved to show instead.
             if live == nil { loadError = failure.localizedDescription }
         } else {
-            meta.updatedAt = nowMs()
+            meta.listsUpdated = (meta.listsUpdated ?? [:]).merging([id: nowMs()]) { $1 }
             Store.write("meta", meta)
         }
         await checkForNewEpisodes()
@@ -250,8 +288,9 @@ final class AppModel {
         }
         saveProviders(list)
         if saved.id == activeId {
-            live = nil; films = nil; series = nil
-            await use(p)
+            // Changed details (a new password, say) mean fresh lists, however recent the saved ones.
+            clearCatalogues()
+            await use(p, refreshing: true)
         } else if editing == nil {
             // A new provider comes into use; editing another one leaves the one in use alone.
             page = .home
@@ -277,7 +316,7 @@ final class AppModel {
             meta.activeProvider = nil
             Store.write("meta", meta)
             provider = nil
-            live = nil; films = nil; series = nil
+            clearCatalogues()
         }
     }
 
@@ -294,53 +333,37 @@ final class AppModel {
 
     func clearSavedData() async {
         CatalogCache.clearAll()
-        meta.updatedAt = nil
+        if let id = activeId { meta.listsUpdated?[id] = nil }
         Store.write("meta", meta)
         await refresh()
     }
 
     // MARK: Lookups
 
-    func liveChannel(_ id: String) -> Channel? { liveById[id] }
-    func film(_ id: String) -> Channel? { filmById[id] }
-    func seriesItem(_ id: String) -> Series? { seriesById[id] }
+    func liveChannel(_ id: String) -> Channel? { liveCatalogue?.byId[id] }
+    func film(_ id: String) -> Channel? { filmCatalogue?.byId[id] }
+    func seriesItem(_ id: String) -> Series? { seriesCatalogue?.byId[id] }
 
-    @ObservationIgnored private var searchIndex: (live: [(String, Channel)], films: [(String, Channel)], series: [(String, Series)])?
-
-    private static func normalise(_ s: String) -> String {
-        s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
-    }
-
+    /** Names that start with [query] first, then any that contain it, from the prepared names. */
     func search(_ query: String, limit: Int = 40) -> (live: [Channel], films: [Channel], series: [Series]) {
-        let q = Self.normalise(query.trimmingCharacters(in: .whitespaces))
+        let q = Catalogue<Channel>.fold(query.trimmingCharacters(in: .whitespaces))
         guard !q.isEmpty else { return ([], [], []) }
-        if searchIndex == nil {
-            searchIndex = (
-                (live ?? []).flatMap(\.items).map { (Self.normalise($0.name), $0) },
-                (films ?? []).flatMap(\.items).map { (Self.normalise($0.name), $0) },
-                (series ?? []).flatMap(\.items).map { (Self.normalise($0.name), $0) }
-            )
-        }
-        func find<T>(_ list: [(String, T)]) -> [T] {
-            // Names that start with the query first, then any that contain it.
+        func find<T: CatalogueItem>(_ c: Catalogue<T>?) -> [T] {
+            guard let c else { return [] }
             var starts: [T] = [], contains: [T] = []
-            for (name, item) in list {
+            for (name, item) in zip(c.folded, c.all) {
                 if name.hasPrefix(q) || name.contains(" \(q)") { starts.append(item) } else if name.contains(q) { contains.append(item) }
                 if starts.count >= limit { break }
             }
             return Array((starts + contains).prefix(limit))
         }
-        return (find(searchIndex!.live), find(searchIndex!.films), find(searchIndex!.series))
+        return (find(liveCatalogue), find(filmCatalogue), find(seriesCatalogue))
     }
 
-    /** Newest first, across every category. */
-    func recentlyAdded(films n: Int = 24) -> [Channel] {
-        Array((films ?? []).flatMap(\.items).filter { $0.added > 0 }.sorted { $0.added > $1.added }.prefix(n))
-    }
+    /** Newest first, across every category (worked out once per update). */
+    func recentlyAdded(films n: Int = 24) -> [Channel] { Array((filmCatalogue?.newest ?? []).prefix(n)) }
 
-    func recentlyUpdatedSeries(_ n: Int = 24) -> [Series] {
-        Array((series ?? []).flatMap(\.items).filter { $0.added > 0 }.sorted { $0.added > $1.added }.prefix(n))
-    }
+    func recentlyUpdatedSeries(_ n: Int = 24) -> [Series] { Array((seriesCatalogue?.newest ?? []).prefix(n)) }
 
     /** The live group a channel belongs to, for zapping. */
     func liveGroup(of c: Channel) -> [Channel] { live?.first { $0.name == c.group }?.items ?? [c] }
@@ -366,9 +389,9 @@ final class AppModel {
             guard let colon = key.firstIndex(of: ":") else { continue }
             let kind = key[..<colon], id = String(key[key.index(after: colon)...])
             switch kind {
-            case "live": if let c = liveById[id] { l.append(c) }
-            case "film": if let c = filmById[id] { f.append(c) }
-            case "series": if let x = seriesById[id] { s.append(x) }
+            case "live": if let c = liveChannel(id) { l.append(c) }
+            case "film": if let c = film(id) { f.append(c) }
+            case "series": if let x = seriesItem(id) { s.append(x) }
             default: break
             }
         }
@@ -491,7 +514,7 @@ final class AppModel {
         defer { checkingEpisodes = false }
         var checks = Store.read("episode-checks-\(id)", as: [String: NewEpisodes.Check].self) ?? [:]
         for entry in history where !entry.live && !entry.isFilm && !entry.shownInContinue(progressOf) {
-            guard let sid = entry.seriesId, let show = seriesById[sid] else { continue }
+            guard let sid = entry.seriesId, let show = seriesItem(sid) else { continue }
             let key = favKey(.series, sid), mark = ledger.watched[key]
             let recorded = mark?.on == true && mark?.episode == entry.current.id
             guard NewEpisodes.due(show, checked: checks[sid], now: nowMs()) || !recorded,
@@ -513,7 +536,7 @@ final class AppModel {
         // Watched series that Continue watching's short history has let go: brought back the same way.
         for (key, mark) in ledger.watched where mark.on && key.hasPrefix("series:") {
             let sid = String(key.dropFirst("series:".count))
-            guard !history.contains(where: { $0.seriesId == sid }), let show = seriesById[sid],
+            guard !history.contains(where: { $0.seriesId == sid }), let show = seriesItem(sid),
                   NewEpisodes.due(show, checked: checks[sid], now: nowMs()),
                   let data = try? await Repo.seriesData(p, show, .network), provider == p else { continue }
             checks[sid] = NewEpisodes.Check(added: show.added, at: nowMs())

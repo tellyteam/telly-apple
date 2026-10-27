@@ -6,15 +6,19 @@ struct LiveView: View {
     @Environment(\.compactWidth) private var compact
     @State private var group: String?
     @State private var filter = ""
+    /** What the filter matched, worked out off the main thread; nil while there's no filter. */
+    @State private var matches: [Channel]?
 
     var body: some View {
         let groups = app.live ?? []
         HStack(spacing: 0) {
             // At a narrow width the categories are a menu in the bar instead.
             if !compact { categories(groups); Divider() }
-            let channels = shown(groups)
+            let channels = matches ?? inGroup
             if app.live == nil {
                 Message(title: app.refreshing ? "Loading channels…" : "No channels yet", detail: app.loadError)
+            } else if group == Self.favourites && channels.isEmpty && filter.isEmpty {
+                Message(title: "No favourite channels yet", detail: Self.howToFavourite)
             } else {
                 List(channels) { c in
                     Button { app.playChannel(c, in: group == Self.favourites ? channels : nil) } label: { ChannelRow(channel: c) }
@@ -30,12 +34,27 @@ struct LiveView: View {
         .toolbar { if compact, !groups.isEmpty { ToolbarItem(placement: .primaryAction) { groupMenu(groups) } } }
         // All, so the filter searches every channel from the start.
         .onAppear { if group == nil { group = Self.all } }
+        .task(id: FilterKey(text: filter, group: group, list: app.liveCatalogue?.version, favourites: app.favourites.count)) { await runFilter() }
+    }
+
+    private struct FilterKey: Equatable { let text: String; let group: String?; let list: UUID?; let favourites: Int }
+
+    /** After a short pause in typing, so each key press doesn't search every channel. */
+    private func runFilter() async {
+        let q = filter.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty, let catalogue = app.liveCatalogue else { matches = nil; return }
+        try? await Task.sleep(for: .milliseconds(150))
+        guard !Task.isCancelled else { return }
+        let items: [Channel]? = group == Self.all ? nil : inGroup
+        let found = await Task.detached(priority: .userInitiated) { catalogue.filter(q, in: items) }.value
+        if !Task.isCancelled { matches = found }
     }
 
     private func groupMenu(_ groups: [ItemGroup<Channel>]) -> some View {
         Menu {
             Picker("Category", selection: $group) {
-                if !app.favouriteItems().live.isEmpty { Label("Favourites", systemImage: "star.fill").tag(Optional(Self.favourites)) }
+                // Always first, even when empty (PLAYBACK.md, Lists).
+                Label("Favourites", systemImage: "star.fill").tag(Optional(Self.favourites))
                 Text("All channels").tag(Optional(Self.all))
                 ForEach(groups) { g in Text(g.name).tag(Optional(g.name)) }
             }
@@ -46,9 +65,10 @@ struct LiveView: View {
 
     private func categories(_ groups: [ItemGroup<Channel>]) -> some View {
             List(selection: $group) {
-                if !app.favouriteItems().live.isEmpty { Label("Favourites", systemImage: "star.fill").tag(Self.favourites) }
+                // Always first, even when empty (PLAYBACK.md, Lists).
+                Label("Favourites", systemImage: "star.fill").tag(Self.favourites)
                 if !groups.isEmpty {
-                    HStack { Text("All channels"); Spacer(); Text("\(Self.everything(groups).count)").foregroundStyle(Theme.faint).font(.caption) }
+                    HStack { Text("All channels"); Spacer(); Text("\(app.liveCatalogue?.all.count ?? 0)").foregroundStyle(Theme.faint).font(.caption) }
                         .tag(Self.all)
                 }
                 ForEach(groups) { g in
@@ -60,20 +80,18 @@ struct LiveView: View {
     }
 
     private static let favourites = "\u{1}favourites"
+    #if os(macOS)
+    private static let howToFavourite = "Right-click a channel and choose Favourite."
+    #else
+    private static let howToFavourite = "Swipe left on a channel, or touch and hold it, and choose Favourite."
+    #endif
     private static let all = "\u{1}all"
 
-    /** Every channel once (providers list some in several categories). */
-    private static func everything(_ groups: [ItemGroup<Channel>]) -> [Channel] {
-        var seen = Set<String>()
-        return groups.flatMap(\.items).filter { seen.insert($0.id).inserted }
-    }
-
-    private func shown(_ groups: [ItemGroup<Channel>]) -> [Channel] {
-        let list = group == Self.favourites ? app.favouriteItems().live
-            : group == Self.all ? Self.everything(groups)
-            : groups.first { $0.name == group }?.items ?? []
-        let q = filter.trimmingCharacters(in: .whitespaces)
-        return q.isEmpty ? list : list.filter { $0.name.localizedCaseInsensitiveContains(q) }
+    /** The chosen category: Favourites, every channel once (prepared with the list), or one category. */
+    private var inGroup: [Channel] {
+        group == Self.favourites ? app.favouriteItems().live
+            : group == Self.all ? app.liveCatalogue?.all ?? []
+            : app.live?.first { $0.name == group }?.items ?? []
     }
 
     @ViewBuilder private func favouriteSwipe(_ c: Channel) -> some View {

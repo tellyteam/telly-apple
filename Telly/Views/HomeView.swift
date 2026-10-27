@@ -69,9 +69,12 @@ struct HomeView: View {
                 }
                 if let error = app.loadError { Text(error).foregroundStyle(.orange).padding(.horizontal, pageInset(compact)) }
             }
+            // Room for the buttons beside the first heading, clear of the row below it.
+            .padding(.top, shortcuts ? 10 : 0)
             .overlay(alignment: .topTrailing) {
                 if shortcuts {
                     HStack(spacing: 10) {
+                        RefreshIcon()
                         if Downloads.available && app.provider?.isXtream == true { ShortcutIcon(page: .downloads) }
                         ShortcutIcon(page: .settings)
                     }
@@ -124,6 +127,25 @@ private struct Hero: View {
     }
 }
 
+/** Fetches the lists again (PLAYBACK.md, Lists), beside Downloads and Settings; spins while it does. */
+private struct RefreshIcon: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        Button { Task { await app.refresh() } } label: {
+            ZStack {
+                if app.refreshing { ProgressView().tint(.white) } else {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                }
+            }
+            .shortcutDisc()
+        }
+        .buttonStyle(.plain)
+        .disabled(app.refreshing)
+        .accessibilityLabel(app.refreshing ? "Updating your lists" : "Refresh lists")
+    }
+}
+
 /** Downloads or Settings over the top of Home: an icon on a dark disc, legible over any artwork. */
 private struct ShortcutIcon: View {
     let page: Page
@@ -131,13 +153,22 @@ private struct ShortcutIcon: View {
     var body: some View {
         NavigationLink(value: page) {
             Image(systemName: page.icon)
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(.black.opacity(0.4), in: Circle())
+                .shortcutDisc()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(page.rawValue)
+    }
+}
+
+extension View {
+    /** Refresh, Downloads and Settings over Home: a light disc with an outline, clear on the dark slate and over artwork. */
+    fileprivate func shortcutDisc() -> some View {
+        frame(width: 44, height: 44)
+            .background(Color.white.opacity(0.16), in: Circle())
+            .overlay(Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
+            .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
     }
 }
 

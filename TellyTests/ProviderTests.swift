@@ -74,4 +74,33 @@ final class PlayerFailureTests: XCTestCase {
         XCTAssertTrue(PlayerController.explain(nil).contains("internet"))
         XCTAssertTrue(PlayerController.explain(500).contains("won't play"))
     }
+
+    func testCompactCataloguesRoundTripWithoutTheLogin() throws {
+        let server = URL(string: "http://example.com:8080/")!
+        let prefix = Xtream.streamPrefix(server, "movie", "user", "secret")
+        let films = [ItemGroup(name: "New\nreleases", items: [
+            Channel(id: "7", name: "A film\r\nwith a break", group: "New\nreleases", logo: "http://img/7.jpg", url: prefix + "7.mkv", added: 1_700_000_000),
+            Channel(id: "8", name: "B", group: "New\nreleases", url: prefix + "8.mp4"),
+        ])]
+        let data = Compact.pack(films, fingerprint: "abc")
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("secret"), "the saved copy never holds the login")
+        XCTAssertEqual(Compact.fingerprint(ofSaved: data), "abc")
+        let back = try XCTUnwrap(Compact.unpackChannels(data, streamPrefix: prefix))
+        XCTAssertEqual(back.count, 1)
+        XCTAssertEqual(back[0].items.map(\.url), films[0].items.map(\.url))
+        XCTAssertEqual(back[0].items[0].name, "A film with a break")
+        XCTAssertEqual(back[0].items[0].added, 1_700_000_000)
+        XCTAssertEqual(back[0].items[0].logo, "http://img/7.jpg")
+        XCTAssertNil(back[0].items[1].logo)
+
+        let series = [ItemGroup(name: "Drama", items: [Series(id: "9", name: "S", group: "Drama", cover: "c", plot: "p", added: 5)])]
+        let s = try XCTUnwrap(Compact.unpackSeries(Compact.pack(series, fingerprint: "f")))
+        XCTAssertEqual(s[0].items[0].name, "S")
+        XCTAssertNil(s[0].items[0].plot, "plots aren't kept: the series' page fetches its own")
+        // An older version's copy still loads, but its fingerprint never matches, so it's rewritten.
+        let older = Data("telly-compact 1\u{1F}abc\n\u{1E}G\n1\u{1F}N\u{1F}\u{1F}\u{1F}\u{1F}ts\n".utf8)
+        XCTAssertEqual(Compact.unpackChannels(older, streamPrefix: prefix)?.first?.items.first?.id, "1")
+        XCTAssertNil(Compact.fingerprint(ofSaved: older))
+        XCTAssertNil(Compact.unpackChannels(Data("[]".utf8), streamPrefix: prefix))
+    }
 }

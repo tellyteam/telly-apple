@@ -49,6 +49,11 @@ enum Xtream {
         return URL(string: server.absoluteString + "player_api.php?" + query)!
     }
 
+    /** A stream address up to its file name: `{server}/{kind}/{user}/{pass}/`. */
+    static func streamPrefix(_ server: URL, _ kind: String, _ username: String, _ password: String) -> String {
+        server.absoluteString + [kind, username, password].map(encode).joined(separator: "/") + "/"
+    }
+
     /** `{server}/{kind}/{user}/{pass}/{id}.{ext}`, the standard Xtream stream path. */
     static func streamURL(_ server: URL, _ kind: String, _ username: String, _ password: String, _ id: String, _ ext: String) -> String {
         server.absoluteString + [kind, username, password, "\(id).\(ext)"].map(encode).joined(separator: "/")

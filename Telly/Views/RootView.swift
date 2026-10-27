@@ -45,9 +45,12 @@ struct RootView: View {
                     .inlineTitle()
                     .safeAreaInset(edge: .bottom) {
                         VStack(alignment: .leading, spacing: 8) {
-                            if app.refreshing {
-                                Label("Updating your lists…", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(Theme.muted)
+                            // Beside Downloads and Settings: lists are otherwise fetched only when 12 hours old.
+                            Button { Task { await app.refresh() } } label: {
+                                Label(app.refreshing ? "Updating your lists…" : "Refresh lists", systemImage: "arrow.clockwise")
                             }
+                            .buttonStyle(.bordered)
+                            .disabled(app.refreshing)
                             if app.providers.count > 1 { providerSwitcher }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)

@@ -1,27 +1,28 @@
 import SwiftUI
 
 /** Categories on the left, a poster grid on the right. Shared by Films and Series. */
-private struct CatalogLayout<Item: Hashable & Identifiable, Card: View>: View {
+private struct CatalogLayout<Item: CatalogueItem, Card: View>: View {
     let title: String
-    let groups: [ItemGroup<Item>]?
+    let catalogue: Catalogue<Item>?
     let loading: Bool
-    let name: (Item) -> String
     @ViewBuilder let card: (Item) -> Card
     @Environment(\.compactWidth) private var compact
     @State private var group: String?
     @State private var filter = ""
+    /** What the filter matched, worked out off the main thread; nil while there's no filter. */
+    @State private var matches: [Item]?
 
     private static var all: String { "\u{1}all" }
 
     var body: some View {
+        let groups = catalogue?.groups
         HStack(spacing: 0) {
             // At a narrow width the categories are a menu in the bar instead (see groupMenu).
             if !compact { categories; Divider() }
             if groups == nil {
                 Message(title: loading ? "Loading…" : "Nothing here yet")
             } else {
-                let items = shown
-                PosterGrid { ForEach(items) { card($0) } }
+                PosterGrid { ForEach(matches ?? inGroup) { card($0) } }
                     .filterField($filter, prompt: "Filter \(title.lowercased())")
             }
         }
@@ -30,16 +31,30 @@ private struct CatalogLayout<Item: Hashable & Identifiable, Card: View>: View {
         .toolbar { if compact, let groups, !groups.isEmpty { ToolbarItem(placement: .primaryAction) { groupMenu(groups) } } }
         // All, so the filter searches everything from the start.
         .onAppear { if group == nil { group = Self.all } }
+        .task(id: FilterKey(text: filter, group: group, list: catalogue?.version)) { await runFilter() }
         .detailDestinations()
+    }
+
+    private struct FilterKey: Equatable { let text: String; let group: String?; let list: UUID? }
+
+    /** After a short pause in typing, so each key press doesn't search the whole catalogue. */
+    private func runFilter() async {
+        let q = filter.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty, let catalogue else { matches = nil; return }
+        try? await Task.sleep(for: .milliseconds(150))
+        guard !Task.isCancelled else { return }
+        let items: [Item]? = group == Self.all ? nil : inGroup
+        let found = await Task.detached(priority: .userInitiated) { catalogue.filter(q, in: items) }.value
+        if !Task.isCancelled { matches = found }
     }
 
     private var categories: some View {
             List(selection: $group) {
-                if let groups, !groups.isEmpty {
-                    HStack { Text("All \(title.lowercased())").lineLimit(1); Spacer(); Text("\(everything.count)").foregroundStyle(Theme.faint).font(.caption) }
+                if let catalogue, !catalogue.groups.isEmpty {
+                    HStack { Text("All \(title.lowercased())").lineLimit(1); Spacer(); Text("\(catalogue.all.count)").foregroundStyle(Theme.faint).font(.caption) }
                         .tag(Self.all)
                 }
-                ForEach(groups ?? []) { g in
+                ForEach(catalogue?.groups ?? []) { g in
                     HStack { Text(g.name).lineLimit(1); Spacer(); Text("\(g.items.count)").foregroundStyle(Theme.faint).font(.caption) }.tag(g.name)
                 }
             }
@@ -58,23 +73,16 @@ private struct CatalogLayout<Item: Hashable & Identifiable, Card: View>: View {
         }
     }
 
-    /** Every item once (providers list some in several categories). */
-    private var everything: [Item] {
-        var seen = Set<Item.ID>()
-        return (groups ?? []).flatMap(\.items).filter { seen.insert($0.id).inserted }
-    }
-
-    private var shown: [Item] {
-        let list = group == Self.all ? everything : groups?.first { $0.name == group }?.items ?? []
-        let q = filter.trimmingCharacters(in: .whitespaces)
-        return q.isEmpty ? list : list.filter { name($0).localizedCaseInsensitiveContains(q) }
+    /** The chosen category, or every item once (prepared with the list, not here). */
+    private var inGroup: [Item] {
+        group == Self.all ? catalogue?.all ?? [] : catalogue?.groups.first { $0.name == group }?.items ?? []
     }
 }
 
 struct FilmsView: View {
     @Environment(AppModel.self) private var app
     var body: some View {
-        CatalogLayout(title: "Films", groups: app.films, loading: app.refreshing, name: \.name) { f in
+        CatalogLayout(title: "Films", catalogue: app.filmCatalogue, loading: app.refreshing) { f in
             NavigationLink(value: FilmLink(film: f)) {
                 PosterCard(title: f.name, image: f.logo, progress: app.progressOf(f.url).map(\.fraction), watched: app.isWatched(.film, f.id))
             }
@@ -87,7 +95,7 @@ struct FilmsView: View {
 struct SeriesListView: View {
     @Environment(AppModel.self) private var app
     var body: some View {
-        CatalogLayout(title: "Series", groups: app.series, loading: app.refreshing, name: \.name) { s in
+        CatalogLayout(title: "Series", catalogue: app.seriesCatalogue, loading: app.refreshing) { s in
             NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover, watched: app.isWatched(.series, s.id)) }
                 .buttonStyle(.plain)
                 .contextMenu { FavouriteMenuItem(kind: .series, id: s.id) }
