@@ -15,6 +15,8 @@ struct FilmDetailView: View {
                     .frame(height: compact ? 230 : 320)
                     .clipped()
                     .overlay(LinearGradient(colors: [.clear, Theme.background], startPoint: .center, endPoint: .bottom))
+                    // Keeps the status bar and back button readable over bright artwork.
+                    .overlay(LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.4)))
                 HStack(alignment: .top, spacing: 28) {
                     // The poster beside the details when there's room; on a phone the backdrop is enough.
                     if !compact { PosterCard(title: "", image: film.logo, fixedWidth: 180).offset(y: -90).padding(.bottom, -90).accessibilityHidden(true) }
@@ -46,6 +48,7 @@ struct FilmDetailView: View {
         }
         .ignoresSafeArea(edges: .top)
         .noBarTitle()
+        .artworkPage()
         .task(id: film.id) { await load() }
     }
 
@@ -75,6 +78,8 @@ struct SeriesDetailView: View {
                     .frame(height: compact ? 230 : 300)
                     .clipped()
                     .overlay(LinearGradient(colors: [.clear, Theme.background], startPoint: .center, endPoint: .bottom))
+                    // Keeps the status bar and back button readable over bright artwork.
+                    .overlay(LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.4)))
                 VStack(alignment: .leading, spacing: 12) {
                     Text(series.name).font((compact ? Font.title : .largeTitle).weight(.bold)).accessibilityAddTraits(.isHeader)
                     HStack(spacing: 10) {
@@ -120,6 +125,7 @@ struct SeriesDetailView: View {
         }
         .ignoresSafeArea(edges: .top)
         .noBarTitle()
+        .artworkPage()
         .task(id: series.id) { await load() }
     }
 

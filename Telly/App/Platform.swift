@@ -187,6 +187,19 @@ extension View {
         #endif
     }
 
+    /**
+     * A page whose artwork runs up behind the bar (a film's or series' page): the bar shows what's
+     * behind it, without the shade iOS 26 puts under it, over telly's dark slate.
+     */
+    @ViewBuilder func artworkPage() -> some View {
+        let page = clearBar().background(Theme.background.ignoresSafeArea())
+        #if os(iOS)
+        if #available(iOS 26, *) { page.scrollEdgeEffectHidden(true, for: .top) } else { page }
+        #else
+        page
+        #endif
+    }
+
     /** No bar at all, nor the shade iOS 26 puts under one: the page runs to the top of the screen. */
     @ViewBuilder func hiddenBar() -> some View {
         #if os(iOS)
