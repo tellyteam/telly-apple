@@ -127,6 +127,7 @@ struct SettingsView: View {
 
 private struct SyncSection: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.compactWidth) private var compact
     @State private var joining = false
     @State private var code = ""
     @State private var linking = false
@@ -142,12 +143,16 @@ private struct SyncSection: View {
                 if let e = app.syncError { Text(e).foregroundStyle(.orange).font(.callout) }
                 Button(showCode ? "Hide code" : "Show code to link another device") { showCode.toggle() }
                 if showCode {
-                    HStack(spacing: 20) {
+                    // Side by side where there's room; on a phone the code goes above the QR code.
+                    let layout = compact ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(spacing: 20))
+                    layout {
+                        Text(SyncCrypto.formatCode(config.code)).font(.system(.title, design: .monospaced).weight(.semibold)).textSelection(.enabled)
+                            .lineLimit(1).minimumScaleFactor(0.6)
                         if let qr = SyncLink.image(SyncLink.url(code: config.code)) {
                             Image(cgImage: qr).interpolation(.none).resizable().frame(width: 150, height: 150)
                                 .padding(10).background(.white, in: RoundedRectangle(cornerRadius: 10))
+                                .accessibilityLabel("QR code to link another device")
                         }
-                        Text(SyncCrypto.formatCode(config.code)).font(.system(.title, design: .monospaced).weight(.semibold)).textSelection(.enabled)
                     }
                 }
                 Button(app.syncBusy ? "Syncing…" : "Sync now") { Task { await app.syncNow(force: true) } }.disabled(app.syncBusy)
