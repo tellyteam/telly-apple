@@ -1,0 +1,59 @@
+# Builds telly and runs its tests on every pull request and every push to main: the iPad/iPhone
+# app with its tests on a simulator, and the Mac app.
+#
+# This is the free build: no PLUS flag and no secrets, so it runs the same for PRs from forks.
+# The paid extras (downloads) are only compiled by release.yml; building them here would print
+# their private code into this public repo's logs whenever they failed to compile.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # VLCKit is a large download: keep Vendor/ until fetch-vendor.sh (and so a checksum) changes.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Vendor
+          key: vendor-${{ hashFiles('scripts/fetch-vendor.sh') }}
+      - name: Fetch VLCKit and Sparkle (checked against their published checksums)
+        run: sh scripts/fetch-vendor.sh
+      - name: Pick a simulator
+        # Runner images change which iPhones they have, so take the first one there is.
+        run: |
+          id=$(xcrun simctl list devices available -j |
+            jq -r '[.devices | to_entries[] | select(.key | contains("iOS")) | .value[] | select(.name | startswith("iPhone"))][0].udid')
+          test -n "$id" && [ "$id" != null ] || { echo "::error::No iPhone simulator on this runner"; exit 1; }
+          echo "SIMULATOR=$id" >> "$GITHUB_ENV"
+      - name: Build and test
+        run: |
+          xcodebuild -project Telly.xcodeproj -scheme Telly -configuration Debug -derivedDataPath build \
+            -destination "id=$SIMULATOR" CODE_SIGNING_ALLOWED=NO test
+
+  mac:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Vendor
+          key: vendor-${{ hashFiles('scripts/fetch-vendor.sh') }}
+      - name: Fetch VLCKit and Sparkle (checked against their published checksums)
+        run: sh scripts/fetch-vendor.sh
+      - name: Build
+        run: |
+          xcodebuild -project Telly.xcodeproj -scheme "Telly Mac" -configuration Debug -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build
