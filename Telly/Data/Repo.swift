@@ -58,9 +58,9 @@ struct XtreamSession {
     /**
      * One of the big lists (PLAYBACK.md, Lists), from its categories and streams. Saved: the
      * compact copy, or once, the raw copy an earlier version saved, converted. Fresh: nil when the
-     * provider's answer hasn't changed since it was saved, so it isn't converted again.
+     * list hasn't changed since it was saved (by fingerprint), so it isn't saved or shown again.
      */
-    func bigList<T>(_ name: String, categories: String, streams: String, also: Data = Data(),
+    func bigList<T>(_ name: String, categories: String, streams: String,
                     unpack: (Data) -> [ItemGroup<T>]?, pack: ([ItemGroup<T>], String) -> Data,
                     build: ([(id: String, name: String)], Any) throws -> [ItemGroup<T>]) async throws -> [ItemGroup<T>]? {
         if source == .cache {
@@ -73,11 +73,11 @@ struct XtreamSession {
         }
         let c = try await HTTP.shared.data(api(categories))
         let s = try await HTTP.shared.data(api(streams))
-        let fingerprint = Compact.fingerprint(also, c, s)
-        if let saved = CatalogCache.readPrefix(scope, name), Compact.fingerprint(ofSaved: saved) == fingerprint { return nil }
         // The provider's answer as Foundation objects is several times its size: let it go straight after.
         let groups = try autoreleasepool { try build(Xtream.categories(parseJSON(c)), parseJSON(s)) }
-        CatalogCache.write(scope, name, pack(groups, fingerprint))
+        let (packed, fingerprint) = Compact.stamp(pack(groups, ""))
+        if let saved = CatalogCache.readPrefix(scope, name), Compact.fingerprint(ofSaved: saved) == fingerprint { return nil }
+        CatalogCache.write(scope, name, packed)
         CatalogCache.delete(scope, streams)
         return groups
     }
@@ -98,7 +98,7 @@ enum Repo {
             let format = source == .cache ? CatalogCache.read(x.scope, "format").map { String(decoding: $0, as: UTF8.self) } ?? "ts" : try await x.format()
             guard let format else { return nil }
             guard let fresh = try await x.bigList(
-                "compact_live", categories: "get_live_categories", streams: "get_live_streams", also: Data(format.utf8),
+                "compact_live", categories: "get_live_categories", streams: "get_live_streams",
                 unpack: { Compact.unpackChannels($0, streamPrefix: x.streamPrefix("live")) }, pack: Compact.pack,
                 build: { cats, root in
                     let map = Dictionary(cats.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })

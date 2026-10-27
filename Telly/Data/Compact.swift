@@ -5,8 +5,8 @@ import Foundation
  * Catalogues saved as telly uses them (telly-sync PLAYBACK.md, Lists): only the fields shown, one
  * item per line, read back many times faster than the provider's own answer, which can run to tens
  * of megabytes. Stream addresses are left out, as they carry the login, and rebuilt from each
- * item's id when read. The first line holds a fingerprint of the provider's answer, so a fresh
- * answer that hasn't changed needn't be converted again.
+ * item's id when read. The first line holds a fingerprint of the list, so a fresh list that hasn't
+ * changed needn't be saved or shown again.
  */
 enum Compact {
     /** Version 2 drops series plots. Older saved copies still load; the next refresh rewrites them. */
@@ -15,11 +15,19 @@ enum Compact {
     private static let groupMark = "\u{1E}"
     private static let field = "\u{1F}"
 
-    /** A fingerprint of the provider's answer (its parts in order). */
-    static func fingerprint(_ parts: Data...) -> String {
-        var hash = SHA256()
-        for p in parts { hash.update(data: p) }
-        return hash.finalize().prefix(16).map { String(format: "%02x", $0) }.joined()
+    static func fingerprint(_ data: Data) -> String {
+        SHA256.hash(data: data).prefix(16).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /**
+     * [packed] (made with no fingerprint) with its list's fingerprint in its first line, and that
+     * fingerprint. Of the list as telly keeps it, not the provider's answer: some providers'
+     * answers differ every time (in fields telly doesn't use) though the list is the same.
+     */
+    static func stamp(_ packed: Data) -> (data: Data, fingerprint: String) {
+        let list = packed.drop { $0 != 0x0A }
+        let fingerprint = fingerprint(list)
+        return (Data((header + field + fingerprint).utf8) + list, fingerprint)
     }
 
     /** The fingerprint a saved catalogue was made from; nil if it isn't one. */

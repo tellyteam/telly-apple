@@ -93,6 +93,15 @@ final class PlayerFailureTests: XCTestCase {
         XCTAssertEqual(back[0].items[0].logo, "http://img/7.jpg")
         XCTAssertNil(back[0].items[1].logo)
 
+        // The fingerprint is of the list: the same list stamps the same, a changed one differently.
+        let stamped = Compact.stamp(Compact.pack(films, fingerprint: ""))
+        XCTAssertEqual(Compact.fingerprint(ofSaved: stamped.data), stamped.fingerprint)
+        XCTAssertEqual(Compact.stamp(Compact.pack(films, fingerprint: "")).fingerprint, stamped.fingerprint)
+        var renamed = films
+        renamed[0].items[1].name = "C"
+        XCTAssertNotEqual(Compact.stamp(Compact.pack(renamed, fingerprint: "")).fingerprint, stamped.fingerprint)
+        XCTAssertEqual(Compact.unpackChannels(stamped.data, streamPrefix: prefix)?[0].items.map(\.id), ["7", "8"])
+
         let series = [ItemGroup(name: "Drama", items: [Series(id: "9", name: "S", group: "Drama", cover: "c", plot: "p", added: 5)])]
         let s = try XCTUnwrap(Compact.unpackSeries(Compact.pack(series, fingerprint: "f")))
         XCTAssertEqual(s[0].items[0].name, "S")
