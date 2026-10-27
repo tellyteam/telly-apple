@@ -3,6 +3,8 @@ import SwiftUI
 struct HomeView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.compactWidth) private var compact
+    /** On an iPhone held sideways: Downloads and Settings as a row at the bottom, not at the top. */
+    var shortcutsAtBottom = false
 
     var body: some View {
         ScrollView {
@@ -63,6 +65,16 @@ struct HomeView: View {
                     }
                 }
                 if let error = app.loadError { Text(error).foregroundStyle(.orange).padding(.horizontal, pageInset(compact)) }
+                if shortcutsAtBottom {
+                    HStack(spacing: 12) {
+                        if Downloads.available && app.provider?.isXtream == true {
+                            NavigationLink(value: Page.downloads) { Label("Downloads", systemImage: Page.downloads.icon) }.buttonStyle(.bordered)
+                        }
+                        NavigationLink(value: Page.settings) { Label("Settings", systemImage: Page.settings.icon) }.buttonStyle(.bordered)
+                    }
+                    .tint(.white)
+                    .padding(.horizontal, pageInset(compact))
+                }
             }
             .padding(.bottom, 40)
             // Smaller cards on a phone, so a row shows more than two.

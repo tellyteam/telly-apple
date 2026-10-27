@@ -96,6 +96,17 @@ extension EnvironmentValues {
     }
 }
 
+extension EnvironmentValues {
+    /** A short height: an iPhone held sideways, where every line at the top counts. */
+    var shortHeight: Bool {
+        #if os(iOS)
+        verticalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
+}
+
 /** A page's side margin: tighter at a narrow width. */
 func pageInset(_ compact: Bool) -> CGFloat { compact ? 16 : 24 }
 

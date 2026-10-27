@@ -152,6 +152,7 @@ struct RootView: View {
  */
 private struct PhoneTabs: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.shortHeight) private var sideways
     @State private var tab: Tab = .home
 
     enum Tab: String, Hashable { case home, live, browse, myList = "mylist", search }
@@ -178,11 +179,13 @@ private struct PhoneTabs: View {
         #endif
     }
 
+    /** Downloads and Settings: at the top right, or held sideways, in a row at the bottom of Home. */
     @ViewBuilder private var home: some View {
+        let page = HomeView(shortcutsAtBottom: sideways).toolbar { if !sideways { homeButtons } }
         #if DEBUG
-        HomeView().toolbar { homeButtons }.devOpen()
+        page.devOpen()
         #else
-        HomeView().toolbar { homeButtons }
+        page
         #endif
     }
 
@@ -204,13 +207,24 @@ private struct PhoneTabs: View {
         }
     }
 
+    /** Plain icons: without the glass panel iOS 26 puts behind a toolbar's buttons. */
     @ToolbarContentBuilder private var homeButtons: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            if Downloads.available && app.provider?.isXtream == true {
-                NavigationLink(value: Page.downloads) { Label("Downloads", systemImage: Page.downloads.icon) }
-            }
-            NavigationLink(value: Page.settings) { Label("Settings", systemImage: Page.settings.icon) }
+        if #available(iOS 26, macOS 26, *) {
+            ToolbarItem(placement: .primaryAction) { downloadsLink }.sharedBackgroundVisibility(.hidden)
+            ToolbarItem(placement: .primaryAction) { settingsLink }.sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItemGroup(placement: .primaryAction) { downloadsLink; settingsLink }
         }
+    }
+
+    @ViewBuilder private var downloadsLink: some View {
+        if Downloads.available && app.provider?.isXtream == true {
+            NavigationLink(value: Page.downloads) { Label("Downloads", systemImage: Page.downloads.icon) }.tint(.white)
+        }
+    }
+
+    private var settingsLink: some View {
+        NavigationLink(value: Page.settings) { Label("Settings", systemImage: Page.settings.icon) }.tint(.white)
     }
 }
 
