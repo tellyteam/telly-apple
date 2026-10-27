@@ -44,10 +44,20 @@ enum Store {
         return try? JSONDecoder().decode(T.self, from: data)
     }
 
-    static func write<T: Encodable>(_ name: String, _ value: T) {
+    /** [protection] is complete unless the file is needed while the iPad is locked. */
+    static func write<T: Encodable>(_ name: String, _ value: T, protection: Data.WritingOptions = Device.fileProtection) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         guard let data = try? JSONEncoder().encode(value) else { return }
-        try? data.write(to: dir.appendingPathComponent("\(name).json"), options: [.atomic, Device.fileProtection])
+        try? data.write(to: dir.appendingPathComponent("\(name).json"), options: [.atomic, protection])
+    }
+
+    /** Whether [name] is there but can't be opened yet: a locked iPad, and a file with complete protection. */
+    static func locked(_ name: String) -> Bool {
+        let file = dir.appendingPathComponent("\(name).json")
+        guard FileManager.default.fileExists(atPath: file.path) else { return false }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return true }
+        try? handle.close()
+        return false
     }
 
     static func delete(_ name: String) {

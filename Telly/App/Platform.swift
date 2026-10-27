@@ -39,6 +39,15 @@ enum Device {
         #endif
     }
 
+    /** Files telly needs while the iPad is locked (overnight downloads): readable once it's been unlocked since starting. */
+    static var fileProtectionAfterFirstUnlock: Data.WritingOptions {
+        #if os(iOS)
+        return .completeFileProtectionUntilFirstUserAuthentication
+        #else
+        return []
+        #endif
+    }
+
     /**
      * On iPhone: turns the screen to landscape for watching ([watching] true), and back to
      * portrait after. An iPad (and a Mac) stays as it is.
