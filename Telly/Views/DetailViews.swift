@@ -20,7 +20,10 @@ struct FilmDetailView: View {
                     if !compact { PosterCard(title: "", image: film.logo, fixedWidth: 180).offset(y: -90).padding(.bottom, -90).accessibilityHidden(true) }
                     VStack(alignment: .leading, spacing: 12) {
                         Text(film.name).font((compact ? Font.title : .largeTitle).weight(.bold)).accessibilityAddTraits(.isHeader)
-                        Text(facts(details, group: film.group)).foregroundStyle(Theme.muted)
+                        HStack(spacing: 10) {
+                            if app.isWatched(.film, film.id) { WatchedBadge() }
+                            Text(facts(details, group: film.group)).foregroundStyle(Theme.muted)
+                        }
                         if let p, resumable {
                             HStack { ProgressBar(fraction: p.fraction).frame(width: 200); Text("\(p.minutesLeft) min left").font(.caption).foregroundStyle(Theme.muted) }
                         }
@@ -74,7 +77,10 @@ struct SeriesDetailView: View {
                     .overlay(LinearGradient(colors: [.clear, Theme.background], startPoint: .center, endPoint: .bottom))
                 VStack(alignment: .leading, spacing: 12) {
                     Text(series.name).font((compact ? Font.title : .largeTitle).weight(.bold)).accessibilityAddTraits(.isHeader)
-                    Text(facts(data?.details, group: series.group)).foregroundStyle(Theme.muted)
+                    HStack(spacing: 10) {
+                        if app.isWatched(.series, series.id) { WatchedBadge() }
+                        Text(facts(data?.details, group: series.group)).foregroundStyle(Theme.muted)
+                    }
                     ActionButtons {
                         if let (s, i) = resumeAt {
                             let ep = data!.seasons[s].episodes[i]

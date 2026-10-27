@@ -51,6 +51,31 @@ final class PlaybackRulesTests: XCTestCase {
         }
     }
 
+    func testSeriesNext() throws {
+        for c in try cases("seriesNext") {
+            let seasons = (c["seasons"] as! [[String]]).enumerated().map { n, ids in
+                Season(name: "Season \(n + 1)", episodes: ids.map { Channel(id: $0, name: $0, group: "", url: "http://host/series/u/p/\($0).mkv") })
+            }
+            let got = NewEpisodes.after(seasons, c["episode"] as! String).map { s, i in [seasons.firstIndex(of: s)!, i] }
+            XCTAssertEqual(got, (c["next"] as? [NSNumber])?.map(\.intValue), c["name"] as! String)
+        }
+    }
+
+    func testMyList() throws {
+        for c in try cases("myList") {
+            let watched = Set(c["watched"] as! [String])
+            XCTAssertEqual(PlaybackRules.myListOrder(c["list"] as! [String]) { watched.contains($0) }, c["order"] as! [String], c["name"] as! String)
+        }
+        for c in try cases("leavesMyList") {
+            XCTAssertEqual(PlaybackRules.leavesMyList(kind: c["kind"] as! String), bool(c, "leaves"), c["name"] as! String)
+        }
+    }
+
+    func testFilmIds() {
+        XCTAssertEqual(Playback.filmId(progressKey: "movie/4567.mkv"), "4567")
+        XCTAssertNil(Playback.filmId(progressKey: "series/1234.mkv"))
+    }
+
     func testNextPlayable() throws {
         for c in try cases("nextPlayable") {
             let downloaded = set(c, "downloaded")

@@ -31,10 +31,10 @@ struct HomeView: View {
                 if !(mine.films.isEmpty && mine.series.isEmpty) {
                     Shelf(title: "My List") {
                         ForEach(mine.series) { s in
-                            NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover) }.buttonStyle(.plain)
+                            NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover, watched: app.isWatched(.series, s.id), dimmed: true) }.buttonStyle(.plain)
                         }
                         ForEach(mine.films) { f in
-                            NavigationLink(value: FilmLink(film: f)) { PosterCard(title: f.name, image: f.logo) }.buttonStyle(.plain)
+                            NavigationLink(value: FilmLink(film: f)) { PosterCard(title: f.name, image: f.logo, watched: app.isWatched(.film, f.id), dimmed: true) }.buttonStyle(.plain)
                         }
                     }
                 }
@@ -50,7 +50,7 @@ struct HomeView: View {
                     Shelf(title: "Recently added films") {
                         ForEach(films) { f in
                             NavigationLink(value: FilmLink(film: f)) {
-                                PosterCard(title: f.name, image: f.logo, progress: app.progressOf(f.url).map(\.fraction))
+                                PosterCard(title: f.name, image: f.logo, progress: app.progressOf(f.url).map(\.fraction), watched: app.isWatched(.film, f.id))
                             }
                             .buttonStyle(.plain)
                             .contextMenu { FavouriteMenuItem(kind: .film, id: f.id) }
@@ -61,7 +61,7 @@ struct HomeView: View {
                 if !series.isEmpty {
                     Shelf(title: "Recently updated series") {
                         ForEach(series) { s in
-                            NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover) }
+                            NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover, watched: app.isWatched(.series, s.id)) }
                                 .buttonStyle(.plain)
                                 .contextMenu { FavouriteMenuItem(kind: .series, id: s.id) }
                         }

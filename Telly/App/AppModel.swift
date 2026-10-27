@@ -150,6 +150,7 @@ final class AppModel {
         let r = Records.load(saved.id)
         (favourites, progress, history, ledger) = (r.favourites, r.progress, r.history, r.ledger)
         activeId = saved.id
+        seedWatched()
         meta.activeProvider = saved.id
         Store.write("meta", meta)
         live = nil; films = nil; series = nil
@@ -358,9 +359,10 @@ final class AppModel {
         syncSoon()
     }
 
+    /** My List's films and series, the watched after the rest (PLAYBACK.md, Watched titles). */
     func favouriteItems() -> (live: [Channel], films: [Channel], series: [Series]) {
         var l: [Channel] = [], f: [Channel] = [], s: [Series] = []
-        for key in favourites {
+        for key in PlaybackRules.myListOrder(favourites, watched: { ledger.watched[$0]?.on == true }) {
             guard let colon = key.firstIndex(of: ":") else { continue }
             let kind = key[..<colon], id = String(key[key.index(after: colon)...])
             switch kind {
@@ -379,10 +381,43 @@ final class AppModel {
 
     func saveProgress(_ url: String, position: Double, duration: Double) {
         guard duration > 0, duration.isFinite else { return }
+        let key = Playback.progressKey(url)
         let p = Progress(position: min(max(position, 0), duration).rounded(), duration: duration.rounded(), at: nowMs())
-        progress[Playback.progressKey(url)] = p
-        if p.finished { Downloads.shared.watched(activeId, url) }
+        progress[key] = p
+        if p.finished {
+            Downloads.shared.watched(activeId, url)
+            if let id = Playback.filmId(progressKey: key) { filmWatched(id) }
+        }
         keep("progress", progress)
+    }
+
+    // MARK: Watched titles
+
+    func isWatched(_ kind: FavKind, _ id: String) -> Bool { ledger.watched[favKey(kind, id)]?.on == true }
+
+    /** Records a film as watched; the first time, one in My List leaves it (PLAYBACK.md, Watched titles). */
+    private func filmWatched(_ id: String) {
+        let key = favKey(.film, id)
+        guard ledger.watched[key]?.on != true else { return }
+        setWatched(key, true)
+        if PlaybackRules.leavesMyList(kind: FavKind.film.rawValue), favourites.contains(key) { toggleFavourite(.film, id) }
+    }
+
+    private func setWatched(_ key: String, _ on: Bool, episode: String = "") {
+        ledger.watched[key] = .init(at: nowMs(), on: on, episode: episode)
+        keep("sync-ledger", ledger)
+        syncSoon()
+    }
+
+    /** Starts the record from films already watched; series follow from the episode check. */
+    private func seedWatched() {
+        var changed = false
+        for (k, p) in progress where p.finished {
+            guard let id = Playback.filmId(progressKey: k), ledger.watched[favKey(.film, id)] == nil else { continue }
+            ledger.watched[favKey(.film, id)] = .init(at: p.at, on: true)
+            changed = true
+        }
+        if changed { keep("sync-ledger", ledger) }
     }
 
     /** Continue watching: history with something left to watch (PLAYBACK.md). */
@@ -423,6 +458,7 @@ final class AppModel {
         progress = [:]
         history = []
         ledger.removed = [:]
+        ledger.watched = [:]
         ledger.cleared = nowMs()
         keep("progress", progress)
         keep("history", history)
@@ -447,7 +483,7 @@ final class AppModel {
     /**
      * Brings back series watched to the end of what they had, once the provider adds more: at the
      * next episode, marked "New episodes" when they arrived after it was watched. Each series is
-     * only fetched again after the provider has changed it (PLAYBACK.md).
+     * only fetched again after the provider has changed it, or to record it as watched (PLAYBACK.md).
      */
     func checkForNewEpisodes() async {
         guard let p = provider, let id = activeId, !checkingEpisodes, series != nil else { return }
@@ -455,17 +491,37 @@ final class AppModel {
         defer { checkingEpisodes = false }
         var checks = Store.read("episode-checks-\(id)", as: [String: NewEpisodes.Check].self) ?? [:]
         for entry in history where !entry.live && !entry.isFilm && !entry.shownInContinue(progressOf) {
-            guard let sid = entry.seriesId, let show = seriesById[sid],
-                  NewEpisodes.due(show, checked: checks[sid], now: nowMs()),
+            guard let sid = entry.seriesId, let show = seriesById[sid] else { continue }
+            let key = favKey(.series, sid), mark = ledger.watched[key]
+            let recorded = mark?.on == true && mark?.episode == entry.current.id
+            guard NewEpisodes.due(show, checked: checks[sid], now: nowMs()) || !recorded,
                   let data = try? await Repo.seriesData(p, show, .network), provider == p else { continue }
             checks[sid] = NewEpisodes.Check(added: show.added, at: nowMs())
-            guard let (season, i) = NewEpisodes.after(data.seasons, entry.current.id) else { continue }
+            guard let (season, i) = NewEpisodes.after(data.seasons, entry.current.id) else {
+                if !recorded { setWatched(key, true, episode: entry.current.id) }
+                continue
+            }
+            if mark?.on == true { setWatched(key, false) }
             // Never moved to the front: Continue watching leads with what was last watched.
             var back = entry
             back.items = season.episodes
             back.index = i
             back.newEpisodes = NewEpisodes.isNew(show, watchedAt: entry.at)
             history = history.map { $0.slot == entry.slot ? back : $0 }
+            keep("history", history)
+        }
+        // Watched series that Continue watching's short history has let go: brought back the same way.
+        for (key, mark) in ledger.watched where mark.on && key.hasPrefix("series:") {
+            let sid = String(key.dropFirst("series:".count))
+            guard !history.contains(where: { $0.seriesId == sid }), let show = seriesById[sid],
+                  NewEpisodes.due(show, checked: checks[sid], now: nowMs()),
+                  let data = try? await Repo.seriesData(p, show, .network), provider == p else { continue }
+            checks[sid] = NewEpisodes.Check(added: show.added, at: nowMs())
+            guard let (season, i) = NewEpisodes.after(data.seasons, mark.episode) else { continue }
+            setWatched(key, false)
+            let back = LastWatched(heading: show.name, live: false, index: i, items: season.episodes, seriesId: sid, art: show.cover,
+                                   at: mark.at, newEpisodes: NewEpisodes.isNew(show, watchedAt: mark.at))
+            history = (history + [back]).sorted { $0.at > $1.at }
             keep("history", history)
         }
         Store.write("episode-checks-\(id)", checks)
@@ -606,6 +662,7 @@ final class AppModel {
                 guard player == nil, entry.id == self.activeId else { continue }
                 (progress, history, favourites, ledger) = (r.progress, r.history, r.favourites, r.ledger)
                 Records.save(entry.id, r)
+                seedWatched()
             }
             syncedAt = nowMs()
         } catch {

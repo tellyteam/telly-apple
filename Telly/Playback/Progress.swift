@@ -51,6 +51,14 @@ enum PlaybackRules {
         !watched(continueIndex(index, count: count, watched: watched))
     }
 
+    /** My List with watched titles after the rest, each part in My List order. */
+    static func myListOrder(_ list: [String], watched: (String) -> Bool) -> [String] {
+        list.filter { !watched($0) } + list.filter(watched)
+    }
+
+    /** Whether a title leaves My List once watched: a film does, a series stays. */
+    static func leavesMyList(kind: String) -> Bool { kind == "film" }
+
     /** What plays after [index]: the next item, or offline the next downloaded one; nil when nothing can. */
     static func nextPlayable(_ index: Int, count: Int, downloaded: (Int) -> Bool, online: Bool) -> Int? {
         guard index + 1 < count else { return nil }
@@ -63,7 +71,10 @@ enum PlaybackRules {
  * Continue watching). The same rules as on Fire TV and LG.
  */
 enum NewEpisodes {
-    /** Where watching continues after [watchedId]: that season and the episode's index, or nil if it's the latest. */
+    /**
+     * Where watching continues after [watchedId]: that season and the episode's index, or nil if it's
+     * the latest, when the series counts as watched (PLAYBACK.md, Watched titles).
+     */
     static func after(_ seasons: [Season], _ watchedId: String) -> (Season, Int)? {
         for (s, season) in seasons.enumerated() {
             guard let i = season.episodes.firstIndex(where: { $0.id == watchedId }) else { continue }
@@ -100,6 +111,13 @@ enum Playback {
 
     /** Where to start: the saved position, unless barely started or already finished. */
     static func resumePosition(_ p: Progress?) -> Double { PlaybackRules.startAt(position: p?.position, duration: p?.duration) }
+
+    /** A film's id from its progress key (`movie/123.mkv`); nil for anything else. */
+    static func filmId(progressKey key: String) -> String? {
+        guard key.hasPrefix("movie/") else { return nil }
+        let file = key.dropFirst("movie/".count)
+        return String(file[..<(file.lastIndex(of: ".") ?? file.endIndex)])
+    }
 
     static let film = "Film"
     static let liveHeading = "Live TV"

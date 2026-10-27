@@ -1,11 +1,29 @@
 import Foundation
 
-/** What sync remembers beside the app's own records: when My List changed, removals, the last clear. */
+/**
+ * What sync remembers beside the app's own records: when My List changed, removals, the last clear,
+ * and the record of watched titles (PLAYBACK.md), which is kept with or without sync.
+ */
 struct SyncLedger: Codable, Equatable {
     var list: [String: SyncParcel.ListChange] = [:]
     /** History slot → when it was taken out of Continue watching. */
     var removed: [String: Double] = [:]
     var cleared: Double = 0
+    /** `film:<id>` or `series:<id>` → watched or not, and when that changed. */
+    var watched: [String: SyncParcel.Watched] = [:]
+
+    init(list: [String: SyncParcel.ListChange] = [:], removed: [String: Double] = [:], cleared: Double = 0, watched: [String: SyncParcel.Watched] = [:]) {
+        (self.list, self.removed, self.cleared, self.watched) = (list, removed, cleared, watched)
+    }
+
+    /** Ledgers saved before the watched record have none. */
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        list = try c.decodeIfPresent([String: SyncParcel.ListChange].self, forKey: .list) ?? [:]
+        removed = try c.decodeIfPresent([String: Double].self, forKey: .removed) ?? [:]
+        cleared = try c.decodeIfPresent(Double.self, forKey: .cleared) ?? 0
+        watched = try c.decodeIfPresent([String: SyncParcel.Watched].self, forKey: .watched) ?? [:]
+    }
 }
 
 /**
@@ -58,6 +76,7 @@ enum SyncLocal {
         p.history = order.compactMap { bySlot[$0] }
         for (k, v) in local.ledger.list where SyncParcel.isSyncableKey(k) && !v.on { p.list[k] = v }
         for k in local.favourites where SyncParcel.isSyncableKey(k) { p.list[k] = .init(at: local.ledger.list[k]?.at ?? 0, on: true) }
+        p.watched = local.ledger.watched.filter { SyncParcel.isSyncableKey($0.key) }
         return SyncParcel.trim(p, now: now)
     }
 
@@ -68,7 +87,9 @@ enum SyncLocal {
         var progress = local.progress.filter { SyncParcel.keptAfterClear($0.value.at, cleared) }
         for (k, v) in merged.progress where (progress[k]?.at ?? -1) < v.at { progress[k] = v }
 
-        var ledger = SyncLedger(list: local.ledger.list, removed: local.ledger.removed, cleared: cleared)
+        var ledger = SyncLedger(list: local.ledger.list, removed: local.ledger.removed, cleared: cleared,
+                                watched: local.ledger.watched.filter { SyncParcel.keptAfterClear($0.value.at, cleared) })
+        for (k, v) in merged.watched where (ledger.watched[k]?.at ?? -1) < v.at { ledger.watched[k] = v }
         var on = local.favourites
         for (k, v) in merged.list {
             let mine = ledger.list[k]?.at ?? (on.contains(k) ? 0 : -1)

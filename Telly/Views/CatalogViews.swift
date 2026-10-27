@@ -76,7 +76,7 @@ struct FilmsView: View {
     var body: some View {
         CatalogLayout(title: "Films", groups: app.films, loading: app.refreshing, name: \.name) { f in
             NavigationLink(value: FilmLink(film: f)) {
-                PosterCard(title: f.name, image: f.logo, progress: app.progressOf(f.url).map(\.fraction))
+                PosterCard(title: f.name, image: f.logo, progress: app.progressOf(f.url).map(\.fraction), watched: app.isWatched(.film, f.id))
             }
             .buttonStyle(.plain)
             .contextMenu { FavouriteMenuItem(kind: .film, id: f.id) }
@@ -88,7 +88,7 @@ struct SeriesListView: View {
     @Environment(AppModel.self) private var app
     var body: some View {
         CatalogLayout(title: "Series", groups: app.series, loading: app.refreshing, name: \.name) { s in
-            NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover) }
+            NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover, watched: app.isWatched(.series, s.id)) }
                 .buttonStyle(.plain)
                 .contextMenu { FavouriteMenuItem(kind: .series, id: s.id) }
         }
@@ -132,11 +132,11 @@ struct MyListView: View {
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: compact ? 104 : 150, maximum: 180), spacing: compact ? 12 : 18, alignment: .top)], alignment: .leading, spacing: 22) {
                 ForEach(mine.series) { s in
-                    NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover) }.buttonStyle(.plain)
+                    NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover, watched: app.isWatched(.series, s.id), dimmed: true) }.buttonStyle(.plain)
                         .contextMenu { FavouriteMenuItem(kind: .series, id: s.id) }
                 }
                 ForEach(mine.films) { f in
-                    NavigationLink(value: FilmLink(film: f)) { PosterCard(title: f.name, image: f.logo, progress: app.progressOf(f.url).map(\.fraction)) }
+                    NavigationLink(value: FilmLink(film: f)) { PosterCard(title: f.name, image: f.logo, progress: app.progressOf(f.url).map(\.fraction), watched: app.isWatched(.film, f.id), dimmed: true) }
                         .buttonStyle(.plain)
                         .contextMenu { FavouriteMenuItem(kind: .film, id: f.id) }
                 }
@@ -168,11 +168,11 @@ struct SearchView: View {
                     Message(title: "Nothing matches “\(query)”").padding(.top, 120)
                 }
                 if !r.series.isEmpty {
-                    Shelf(title: "Series") { ForEach(r.series) { s in NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover) }.buttonStyle(.plain) } }
+                    Shelf(title: "Series") { ForEach(r.series) { s in NavigationLink(value: s) { PosterCard(title: s.name, image: s.cover, watched: app.isWatched(.series, s.id)) }.buttonStyle(.plain) } }
                 }
                 if !r.films.isEmpty {
                     Shelf(title: "Films") {
-                        ForEach(r.films) { f in NavigationLink(value: FilmLink(film: f)) { PosterCard(title: f.name, image: f.logo) }.buttonStyle(.plain) }
+                        ForEach(r.films) { f in NavigationLink(value: FilmLink(film: f)) { PosterCard(title: f.name, image: f.logo, watched: app.isWatched(.film, f.id)) }.buttonStyle(.plain) }
                     }
                 }
                 if !r.live.isEmpty {

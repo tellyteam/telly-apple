@@ -87,6 +87,10 @@ struct PosterCard: View {
     let image: String?
     var progress: Double?
     var fixedWidth: CGFloat?
+    /** Watched (PLAYBACK.md, Watched titles): labelled ✓ Watched, with no progress bar. */
+    var watched = false
+    /** In My List, a watched poster is dimmed a little; the label and title stay at full strength. */
+    var dimmed = false
 
     private var width: CGFloat { fixedWidth ?? gridWidth ?? 150 * scale }
 
@@ -94,16 +98,28 @@ struct PosterCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Artwork(url: image, title: title)
                 .frame(width: width, height: width * 1.5)
+                .opacity(watched && dimmed ? 0.5 : 1)
                 .overlay(alignment: .bottom) {
-                    if let progress { ProgressBar(fraction: progress).padding(8) }
+                    if let progress, !watched { ProgressBar(fraction: progress).padding(8) }
                 }
+                .overlay(alignment: .topLeading) { if watched { WatchedBadge().padding(8) } }
                 .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius))
             Text(title).font(.footnote).foregroundStyle(Theme.muted).lineLimit(1).frame(width: width, alignment: .leading)
         }
         // VoiceOver reads a card as one thing: its name, and how much is watched.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
-        .accessibilityValue(progress.map { "\(Int(($0 * 100).rounded())) percent watched" } ?? "")
+        .accessibilityValue(watched ? "Watched" : progress.map { "\(Int(($0 * 100).rounded())) percent watched" } ?? "")
+    }
+}
+
+/** "✓ Watched", on a poster or beside a page's title. */
+struct WatchedBadge: View {
+    var body: some View {
+        Label("Watched", systemImage: "checkmark").labelStyle(.titleAndIcon)
+            .font(.caption2.weight(.semibold)).foregroundStyle(.white)
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 5))
     }
 }
 

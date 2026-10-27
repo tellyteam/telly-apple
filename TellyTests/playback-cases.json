@@ -43,5 +43,22 @@
     { "name": "offline: the next downloaded", "items": 4, "index": 0, "downloaded": [0, 2], "online": false, "next": 2 },
     { "name": "offline: none downloaded after", "items": 4, "index": 2, "downloaded": [0, 2], "online": false, "next": null },
     { "name": "the last item", "items": 4, "index": 3, "downloaded": [3], "online": true, "next": null }
+  ],
+  "seriesNext": [
+    { "name": "part way through a season: the next in it", "seasons": [["1", "2", "3"]], "episode": "1", "next": [0, 1] },
+    { "name": "the end of a season: the next season", "seasons": [["1", "2"], ["3", "4"]], "episode": "2", "next": [1, 0] },
+    { "name": "the last episode of the last season: watched", "seasons": [["1", "2"], ["3", "4"]], "episode": "4", "next": null },
+    { "name": "an empty later season is skipped: watched", "seasons": [["1", "2"], []], "episode": "2", "next": null },
+    { "name": "an empty season between is skipped", "seasons": [["1"], [], ["5"]], "episode": "1", "next": [2, 0] }
+  ],
+  "myList": [
+    { "name": "nothing watched: as added", "list": ["series:1", "film:2", "series:3"], "watched": [], "order": ["series:1", "film:2", "series:3"] },
+    { "name": "a watched series goes last", "list": ["series:1", "series:2", "series:3"], "watched": ["series:1"], "order": ["series:2", "series:3", "series:1"] },
+    { "name": "the watched keep their order", "list": ["series:1", "film:2", "series:3", "series:4"], "watched": ["series:4", "series:1"], "order": ["film:2", "series:3", "series:1", "series:4"] },
+    { "name": "everything watched: as added", "list": ["film:5", "series:6"], "watched": ["film:5", "series:6"], "order": ["film:5", "series:6"] }
+  ],
+  "leavesMyList": [
+    { "name": "a film, when watched", "kind": "film", "leaves": true },
+    { "name": "a series, when watched", "kind": "series", "leaves": false }
   ]
 }

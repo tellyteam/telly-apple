@@ -84,6 +84,25 @@ final class SyncParcelTests: XCTestCase {
         XCTAssertEqual(m.list["film:7"], .init(at: 20, on: false))
     }
 
+    func testWatchedRecordRoundTripsMergesAndClears() {
+        let own = SyncParcel(watched: ["series:88": .init(at: 10, on: true, episode: "1234"), "film:5": .init(at: 5, on: true)])
+        XCTAssertEqual(SyncParcel.parse(own.json())?.watched, own.watched)
+        let other = SyncParcel(watched: ["series:88": .init(at: 20, on: false, episode: ""), "film:6": .init(at: 30, on: true)])
+        let m = SyncParcel.merge(own, [other], now: 100)
+        XCTAssertEqual(m.watched["series:88"]?.on, false, "newer wins: new episodes arrived")
+        XCTAssertEqual(Set(m.watched.keys), ["series:88", "film:5", "film:6"])
+        // An older app's section has no `watched`, and removes nothing.
+        XCTAssertEqual(SyncParcel.merge(own, [SyncParcel(at: 50)], now: 100).watched, own.watched)
+        XCTAssertEqual(Set(SyncParcel.merge(own, [SyncParcel(cleared: 7)], now: 100).watched.keys), ["series:88"])
+    }
+
+    func testLedgersSavedBeforeTheWatchedRecordStillLoad() throws {
+        let old = #"{"list":{"film:5":{"at":4,"on":true}},"removed":{},"cleared":0}"#
+        let ledger = try JSONDecoder().decode(SyncLedger.self, from: Data(old.utf8))
+        XCTAssertEqual(ledger.list["film:5"]?.on, true)
+        XCTAssertTrue(ledger.watched.isEmpty)
+    }
+
     func testAClearAnywhereDropsOlderProgress() {
         let m = SyncParcel.merge(SyncParcel(progress: ["series/1.mkv": Progress(position: 1, duration: 9, at: 10), "series/2.mkv": Progress(position: 1, duration: 9, at: 40)]),
                                  [SyncParcel(cleared: 30)], now: 50)

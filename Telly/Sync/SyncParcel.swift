@@ -31,6 +31,8 @@ struct SyncParcel: Equatable {
     var history: [SyncEntry] = []
     /** My List key → (changed at, on the list). */
     var list: [String: ListChange] = [:]
+    /** `film:<id>` or `series:<id>` → whether it's watched, and since when (PLAYBACK.md, Watched titles). */
+    var watched: [String: Watched] = [:]
     /** When watch progress was last cleared on any device (0 if never). */
     var cleared: Double = 0
 
@@ -39,7 +41,14 @@ struct SyncParcel: Equatable {
         var on: Bool
     }
 
-    static let maxProgress = 2000, maxHistory = 40, maxList = 2000
+    struct Watched: Equatable, Codable {
+        var at: Double
+        var on: Bool
+        /** The episode a series was watched up to; empty for a film. */
+        var episode: String = ""
+    }
+
+    static let maxProgress = 2000, maxHistory = 40, maxList = 2000, maxWatched = 2000
     /** Removals are shared for this long, then forgotten. */
     static let tombstoneMs: Double = 90 * 86_400_000
 
@@ -82,6 +91,7 @@ struct SyncParcel: Equatable {
             "progress": progress.mapValues { [num($0.position), num($0.duration), num($0.at)] },
             "history": h,
             "list": list.mapValues { [num($0.at), $0.on] as [Any] },
+            "watched": watched.mapValues { [num($0.at), $0.on, $0.episode] as [Any] },
             "cleared": num(cleared),
         ]
     }
@@ -115,6 +125,11 @@ struct SyncParcel: Equatable {
             guard isSyncableKey(k), let a = v as? [Any], a.count == 2, let at = time(a[0]), let on = bool(a[1]) else { continue }
             p.list[k] = ListChange(at: at, on: on)
         }
+        for (k, v) in raw["watched"] as? [String: Any] ?? [:] {
+            guard isSyncableKey(k), let a = v as? [Any], a.count == 3, let at = time(a[0]), let on = bool(a[1]),
+                  let episode = a[2] as? String, episode.isEmpty || isSyncableId(episode) else { continue }
+            p.watched[k] = Watched(at: at, on: on, episode: episode)
+        }
         return p
     }
 
@@ -142,12 +157,14 @@ struct SyncParcel: Equatable {
             .sorted { $0.at > $1.at }.prefix(maxHistory))
         out.list = Dictionary(uniqueKeysWithValues: p.list.filter { fresh($0.value.at, !$0.value.on) }
             .sorted { $0.value.at > $1.value.at }.prefix(maxList).map { ($0.key, $0.value) })
+        out.watched = Dictionary(uniqueKeysWithValues: p.watched.filter { fresh($0.value.at, !$0.value.on) && keptAfterClear($0.value.at, p.cleared) }
+            .sorted { $0.value.at > $1.value.at }.prefix(maxWatched).map { ($0.key, $0.value) })
         return out
     }
 
     /** [own] combined with other devices' parcels: newest wins per key and slot; [own] wins a tie. */
     static func merge(_ own: SyncParcel, _ others: [SyncParcel], now: Double) -> SyncParcel {
-        var progress = own.progress, list = own.list, cleared = own.cleared
+        var progress = own.progress, list = own.list, watched = own.watched, cleared = own.cleared
         var history: [String: SyncEntry] = [:]
         var order: [String] = []
         for h in own.history where history[h.slot] == nil { history[h.slot] = h; order.append(h.slot) }
@@ -155,12 +172,13 @@ struct SyncParcel: Equatable {
             cleared = max(cleared, p.cleared)
             for (k, v) in p.progress where (progress[k]?.at ?? -1) < v.at { progress[k] = v }
             for (k, v) in p.list where (list[k]?.at ?? -1) < v.at { list[k] = v }
+            for (k, v) in p.watched where (watched[k]?.at ?? -1) < v.at { watched[k] = v }
             for h in p.history where (history[h.slot]?.at ?? -1) < h.at {
                 if history[h.slot] == nil { order.append(h.slot) }
                 history[h.slot] = h
             }
         }
-        return trim(SyncParcel(at: now, progress: progress, history: order.compactMap { history[$0] }, list: list, cleared: cleared), now: now)
+        return trim(SyncParcel(at: now, progress: progress, history: order.compactMap { history[$0] }, list: list, watched: watched, cleared: cleared), now: now)
     }
 }
 
