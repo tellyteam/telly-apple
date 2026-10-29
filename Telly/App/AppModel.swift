@@ -170,6 +170,8 @@ final class AppModel {
         (favourites, progress, history, ledger) = (r.favourites, r.progress, r.history, r.ledger)
         activeId = saved.id
         seedWatched()
+        // Any watched while telly was closed (or ended before it could remove them).
+        clearWatchedDownloads()
         meta.activeProvider = saved.id
         meta.save()
         clearCatalogues()
@@ -488,11 +490,16 @@ final class AppModel {
         let key = Playback.progressKey(url)
         let p = Progress(position: min(max(position, 0), duration).rounded(), duration: duration.rounded(), at: nowMs())
         progress[key] = p
-        if p.finished {
-            Downloads.shared.watched(activeId, url)
-            if let id = Playback.filmId(progressKey: key) { filmWatched(id) }
-        }
+        if p.finished, let id = Playback.filmId(progressKey: key) { filmWatched(id) }
         keep("progress", progress)
+    }
+
+    /**
+     * Removes watched episodes' downloads (if the user chose that): when telly opens, after a sync,
+     * and as the player moves on, but never the episode [playing] (Downloads.removeWatched).
+     */
+    func clearWatchedDownloads(playing: String? = nil) {
+        Downloads.shared.removeWatched(activeId, playing: playing) { progressOf($0)?.finished == true }
     }
 
     // MARK: Watched titles
@@ -542,6 +549,8 @@ final class AppModel {
         history = history.remembering(LastWatched(heading: req.heading, live: req.live, index: index, items: req.items,
                                                   seriesId: req.seriesId, art: req.art, at: nowMs()))
         keep("history", history)
+        // Moving on to the next episode: the one before may now go.
+        clearWatchedDownloads(playing: req.items[index].url)
     }
 
     /** Plays a history entry: the next episode if the last one reached its credits. */
@@ -573,6 +582,7 @@ final class AppModel {
     /** Leaving the player shares what was watched, and looks for new episodes of anything finished. */
     func closePlayer() {
         player = nil
+        clearWatchedDownloads()
         Downloads.shared.watching = false
         Task {
             await syncNow(force: true)
@@ -769,6 +779,8 @@ final class AppModel {
                 (progress, history, favourites, ledger) = (r.progress, r.history, r.favourites, r.ledger)
                 Records.save(entry.id, r)
                 seedWatched()
+                // Episodes watched on a linked device.
+                clearWatchedDownloads()
             }
             syncedAt = nowMs()
         } catch {

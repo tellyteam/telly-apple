@@ -27,7 +27,7 @@ final class Downloads {
     func localURL(_ providerId: String?, _ url: String) -> URL? { nil }
     func add(providerId: String, _ c: Channel, kind: DownloadItem.Kind, show: String? = nil, seriesId: String? = nil, art: String? = nil) {}
     func removeAll(providerId: String) {}
-    func watched(_ providerId: String?, _ url: String) {}
+    func removeWatched(_ providerId: String?, playing: String? = nil, watched: (String) -> Bool) {}
 }
 
 struct DownloadButton: View {
