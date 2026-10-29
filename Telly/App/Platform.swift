@@ -48,6 +48,24 @@ enum Device {
         #endif
     }
 
+    /** Returns once files with complete protection can be read: at once, unless iOS woke telly with the device locked. */
+    @MainActor static func untilUnlocked() async {
+        #if os(iOS)
+        let unlocked = NotificationCenter.default.notifications(named: UIApplication.protectedDataDidBecomeAvailableNotification)
+        guard !UIApplication.shared.isProtectedDataAvailable else { return }
+        for await _ in unlocked { return }
+        #endif
+    }
+
+    /** Running in the background, woken by iOS. A Mac app never counts as that. */
+    @MainActor static var inBackground: Bool {
+        #if os(iOS)
+        return UIApplication.shared.applicationState == .background
+        #else
+        return false
+        #endif
+    }
+
     /**
      * On iPhone: turns the screen to landscape for watching ([watching] true), and back to
      * portrait after. An iPad (and a Mac) stays as it is.

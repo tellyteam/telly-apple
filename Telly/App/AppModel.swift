@@ -25,6 +25,9 @@ struct Meta: Codable, Equatable {
     var syncUnlocked: Bool?
     /** The saved provider in use ([SavedProvider.id]). */
     var activeProvider: String?
+
+    /** Readable once the device has been unlocked since starting: the overnight wake needs the provider in use. */
+    func save() { Store.write("meta", self, protection: Device.fileProtectionAfterFirstUnlock) }
 }
 
 /** A provider the user has added. [id] is local: it files the provider's own records on this device. */
@@ -79,6 +82,8 @@ final class AppModel {
     @ObservationIgnored private var catalogueTurn = 0
     var refreshing = false
     @ObservationIgnored private var refreshingFor: Provider?
+    /** The saved lists have been read (or tried): until then a missing list may still be on its way. */
+    @ObservationIgnored private var savedListsRead = false
     var loadError: String?
     var meta = Meta()
 
@@ -101,11 +106,20 @@ final class AppModel {
 
     @ObservationIgnored private var syncSoonTask: Task<Void, Never>?
 
+    /** Waits until telly's files can be read (see [start]). Tests replace it. */
+    @ObservationIgnored var untilUnlocked: () async -> Void = { await Device.untilUnlocked() }
+    /** The model once it's started, for the overnight wake ([refreshListsOvernight]). */
+    private static weak var started: AppModel?
+
     var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0" }
 
     // MARK: Start-up
 
     func start() async {
+        // Woken for overnight downloads with the phone locked, nothing telly keeps can be read yet:
+        // starting then would mean empty lists, and an empty My List and progress (synced to other
+        // devices). Downloads run on their own; everything else waits until the phone is unlocked.
+        await untilUnlocked()
         settings = Store.read("settings", as: Settings.self) ?? Settings()
         meta = Store.read("meta", as: Meta.self) ?? Meta()
         sync = Keychain.get("sync").flatMap { try? JSONDecoder().decode(SyncConfig.self, from: Data($0.utf8)) }
@@ -120,6 +134,7 @@ final class AppModel {
         }
         await activate(active)
         ready = true
+        Self.started = self
     }
 
     // MARK: Saved providers
@@ -140,7 +155,7 @@ final class AppModel {
         saveProviders([saved])
         Keychain.delete("provider")
         meta.activeProvider = saved.id
-        Store.write("meta", meta)
+        meta.save()
         return [saved]
     }
 
@@ -156,7 +171,7 @@ final class AppModel {
         activeId = saved.id
         seedWatched()
         meta.activeProvider = saved.id
-        Store.write("meta", meta)
+        meta.save()
         clearCatalogues()
         await use(saved.provider)
     }
@@ -188,9 +203,19 @@ final class AppModel {
                 group.addTask { if let s = try? await Repo.seriesGroups(p, .cache) { await self.setSeries(s, for: p) } }
             }
             guard provider == p else { return }
-            if always || live == nil || listsUpdatedAt.map({ nowMs() - $0 >= Self.listsStaleMs }) ?? true { await refresh() }
+            savedListsRead = true
+            // Old lists are fetched with telly on screen, not in a background launch: that's too
+            // short-lived for big lists, which it would stop part-way (the overnight wake fetches
+            // them itself: refreshListsOvernight).
+            if always { await refresh() } else if !Device.inBackground { await refreshIfStale() }
             await syncNow()
         }
+    }
+
+    /** Fetches the lists again if they're old, or there are none. */
+    private func refreshIfStale() async {
+        guard provider != nil, savedListsRead else { return }
+        if live == nil || listsUpdatedAt.map({ nowMs() - $0 >= Self.listsStaleMs }) ?? true { await refresh() }
     }
 
     // Each list is prepared off the main thread and only swapped in here; the list it replaces is
@@ -222,6 +247,7 @@ final class AppModel {
 
     private func clearCatalogues() {
         catalogueTurn += 1
+        savedListsRead = false
         let old = (liveCatalogue, filmCatalogue, seriesCatalogue)
         (liveCatalogue, filmCatalogue, seriesCatalogue) = (nil, nil, nil)
         Self.letGo(old)
@@ -232,8 +258,11 @@ final class AppModel {
         Task.detached(priority: .background) { withExtendedLifetime(old) {} }
     }
 
-    /** Fetches the lists again, one at a time, each shown as it arrives; an unchanged one is skipped. */
-    func refresh() async {
+    /**
+     * Fetches the lists again, one at a time, each shown as it arrives; an unchanged one is skipped.
+     * [checkEpisodes] is off overnight: the episode checks can't be read with the phone locked.
+     */
+    func refresh(checkEpisodes: Bool = true) async {
         guard let p = provider, let id = activeId, refreshingFor != p else { return }
         // A refresh for the provider switched away from may still be running; this one replaces it.
         refreshing = true
@@ -241,20 +270,72 @@ final class AppModel {
         defer { if refreshingFor == p { refreshing = false; refreshingFor = nil } }
         loadError = nil
         var failure: Error?
-        do { if let l = try await Repo.liveGroups(p, .network) { await setLive(l, for: p) } } catch { failure = failure ?? error }
+        do {
+            let fresh = try await Repo.liveGroups(p, .network)
+            if let l = await Self.listToShow(fresh, showing: liveCatalogue != nil, saved: { try? await Repo.liveGroups(p, .cache) }) { await setLive(l, for: p) }
+        } catch { failure = failure ?? error }
         guard provider == p else { return }
-        do { if let f = try await Repo.filmGroups(p, .network) { await setFilms(f, for: p) } } catch { failure = failure ?? error }
+        do {
+            let fresh = try await Repo.filmGroups(p, .network)
+            if let f = await Self.listToShow(fresh, showing: filmCatalogue != nil, saved: { try? await Repo.filmGroups(p, .cache) }) { await setFilms(f, for: p) }
+        } catch { failure = failure ?? error }
         guard provider == p else { return }
-        do { if let s = try await Repo.seriesGroups(p, .network) { await setSeries(s, for: p) } } catch { failure = failure ?? error }
+        do {
+            let fresh = try await Repo.seriesGroups(p, .network)
+            if let s = await Self.listToShow(fresh, showing: seriesCatalogue != nil, saved: { try? await Repo.seriesGroups(p, .cache) }) { await setSeries(s, for: p) }
+        } catch { failure = failure ?? error }
         guard provider == p else { return }
         if let failure {
             // Only an error worth a screen when there's nothing saved to show instead.
             if live == nil { loadError = failure.localizedDescription }
         } else {
             meta.listsUpdated = (meta.listsUpdated ?? [:]).merging([id: nowMs()]) { $1 }
-            Store.write("meta", meta)
+            meta.save()
         }
-        await checkForNewEpisodes()
+        if checkEpisodes { await checkForNewEpisodes() }
+    }
+
+    /**
+     * What a refresh shows of one list: the fresh copy, or when the provider's list hasn't changed
+     * (nil) and none of it is showing, the saved copy. A list that couldn't be read when telly
+     * started would otherwise never be shown, however often it's refreshed.
+     */
+    static func listToShow<T>(_ fresh: T?, showing: Bool, saved: () async -> T?) async -> T? {
+        if let fresh { return fresh }
+        return showing ? nil : await saved()
+    }
+
+    // MARK: Overnight
+
+    /**
+     * The overnight wake, while downloads are waiting (Downloads.registerWake): fetches the lists of
+     * the provider in use and saves them, so they're fresh in the morning. Only the lists, so it's
+     * safe with the phone locked: My List, progress and sync wait for telly to be opened. Cancelled,
+     * the saved lists stay as they were.
+     */
+    static func refreshListsOvernight() async {
+        if let model = started {
+            await model.refresh(checkEpisodes: false)
+            return
+        }
+        // Not started (woken with the phone locked): straight to the saved lists. An M3U playlist
+        // is left for when telly opens: it holds the login, so it's saved with complete protection.
+        guard let meta = Store.read("meta", as: Meta.self), let id = meta.activeProvider,
+              let text = Keychain.get("providers"),
+              let saved = (try? JSONDecoder().decode([SavedProvider].self, from: Data(text.utf8)))?.first(where: { $0.id == id }),
+              saved.provider.isXtream else { return }
+        let p = saved.provider
+        HTTP.shared.allowCleartext = p.allowCleartext
+        do {
+            _ = try await Repo.liveGroups(p, .network)
+            _ = try await Repo.filmGroups(p, .network)
+            _ = try await Repo.seriesGroups(p, .network)
+        } catch { return }
+        guard !Task.isCancelled else { return }
+        // Read again: telly may have been opened meanwhile.
+        var updated = Store.read("meta", as: Meta.self) ?? meta
+        updated.listsUpdated = (updated.listsUpdated ?? [:]).merging([id: nowMs()]) { $1 }
+        updated.save()
     }
 
     // MARK: Provider
@@ -314,7 +395,7 @@ final class AppModel {
             (favourites, progress, history, ledger) = ([], [:], [], SyncLedger())
             activeId = nil
             meta.activeProvider = nil
-            Store.write("meta", meta)
+            meta.save()
             provider = nil
             clearCatalogues()
         }
@@ -334,7 +415,7 @@ final class AppModel {
     func clearSavedData() async {
         CatalogCache.clearAll()
         if let id = activeId { meta.listsUpdated?[id] = nil }
-        Store.write("meta", meta)
+        meta.save()
         await refresh()
     }
 
@@ -581,7 +662,7 @@ final class AppModel {
     /** Shows or hides Settings → Sync; returns whether it's now shown. Hiding never unlinks. */
     func toggleSyncUnlocked() -> Bool {
         meta.syncUnlocked = !syncShown || sync != nil
-        Store.write("meta", meta)
+        meta.save()
         return syncShown
     }
 
@@ -596,7 +677,7 @@ final class AppModel {
     func confirmLink(_ link: PendingLink) async throws {
         if pendingLink == link { pendingLink = nil }
         meta.syncUnlocked = true
-        Store.write("meta", meta)
+        meta.save()
         try await startSync(code: link.code)
     }
 
@@ -639,6 +720,8 @@ final class AppModel {
     /** Coming back to the front. */
     func becameActive() {
         Task { await syncNow() }
+        // Lists that went old while telly was in the background, or weren't fetched when it was woken there.
+        Task { await refreshIfStale() }
     }
 
     /**

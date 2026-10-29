@@ -120,7 +120,8 @@ enum Repo {
             }
             guard let data else { return nil }
             let channels = M3U.parse(String(decoding: data, as: UTF8.self))
-            if source == .network && !channels.isEmpty { CatalogCache.write(scope, "playlist", data) }
+            // Its stream addresses carry the login: unreadable while the device is locked.
+            if source == .network && !channels.isEmpty { CatalogCache.write(scope, "playlist", data, protection: Device.fileProtection) }
             // First-seen order matches the playlist's own ordering.
             groups = groupInOrder(channels, categoryOrder: []) { $0.group }
         }

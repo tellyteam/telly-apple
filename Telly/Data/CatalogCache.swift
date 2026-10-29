@@ -4,7 +4,9 @@ import Foundation
 /**
  * Saved catalogues: the provider's raw answers, kept on the device so telly opens instantly and
  * refreshes in the background. Scoped by a hash of server and username, so switching providers
- * never mixes lists. On iPad, stored with complete file protection: unreadable while it's locked.
+ * never mixes lists. On iPhone and iPad, readable once the device has been unlocked since starting,
+ * so the overnight wake can save fresh lists; they hold no logins (stream addresses are rebuilt
+ * when read). An M3U playlist does, so it's saved with complete protection instead.
  */
 enum CatalogCache {
     private static var dir: URL {
@@ -34,10 +36,10 @@ enum CatalogCache {
         try? FileManager.default.removeItem(at: file(scope, name))
     }
 
-    static func write(_ scope: String, _ name: String, _ data: Data) {
+    static func write(_ scope: String, _ name: String, _ data: Data, protection: Data.WritingOptions = Device.fileProtectionAfterFirstUnlock) {
         let url = file(scope, name)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: url, options: [.atomic, Device.fileProtection])
+        try? data.write(to: url, options: [.atomic, protection])
     }
 
     static func clearAll() {
