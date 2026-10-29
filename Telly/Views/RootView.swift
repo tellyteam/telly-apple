@@ -150,38 +150,41 @@ struct RootView: View {
 }
 
 /**
- * A narrow width (iPhone, or an iPad in a narrow Split View): a tab bar instead of the sidebar.
- * Films and Series share Browse; Downloads and Settings open from Home.
+ * A narrow width (iPhone, or an iPad in a narrow Split View): a tab bar instead of the sidebar, five
+ * tabs on every iOS: Live TV, Films and Series share Browse, My List and Downloads share Library.
  */
 private struct PhoneTabs: View {
     @Environment(AppModel.self) private var app
     @State private var tab: Tab = .home
+    /** Library's page, here so Home's Downloads icon can open it there. */
+    @SceneStorage("library") private var library: Page = .myList
 
-    enum Tab: String, Hashable { case home, live, browse, myList = "mylist", search }
+    enum Tab: String, Hashable { case home, browse, library, search, settings }
 
     var body: some View {
         TabView(selection: $tab) {
             stack { home }
+                .environment(\.showDownloads) { library = .downloads; tab = .library }
                 .tabItem { Label("Home", systemImage: "house") }.tag(Tab.home)
-            stack { LiveView() }
-                .tabItem { Label("Live TV", systemImage: "tv") }.tag(Tab.live)
-            if app.provider?.isXtream == true {
-                stack { BrowseView() }
-                    .tabItem { Label("Browse", systemImage: "film") }.tag(Tab.browse)
-            }
-            stack { MyListView() }
-                .tabItem { Label("My List", systemImage: "heart") }.tag(Tab.myList)
+            stack { BrowseView().refreshInBar() }
+                .tabItem { Label("Browse", systemImage: "tv") }.tag(Tab.browse)
+            stack { LibraryView(choice: $library).refreshInBar() }
+                .tabItem { Label("Library", systemImage: "heart") }.tag(Tab.library)
             stack { SearchView() }
                 .tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(Tab.search)
+            stack { SettingsView() }
+                .tabItem { Label("Settings", systemImage: "gearshape") }.tag(Tab.settings)
         }
         // Switching or adding a provider goes back to Home, as the sidebar does.
-        .onChange(of: app.page) { _, page in if page == .home { tab = .home } }
+        .onChange(of: app.page) { _, page in
+            if page == .home { tab = .home } else if page == .settings { tab = .settings }
+        }
         #if DEBUG
         .onAppear { if let t = DevHooks.env["TELLY_DEV_TAB"].flatMap(Tab.init) { tab = t } }
         #endif
     }
 
-    /** Home with no bar: Downloads and Settings float over its top right instead. */
+    /** Home with no bar: Refresh and Downloads float over its top right instead. */
     @ViewBuilder private var home: some View {
         let page = HomeView(shortcuts: true).hiddenBar()
         #if DEBUG
@@ -196,36 +199,72 @@ private struct PhoneTabs: View {
             content()
                 .scrollContentBackground(.hidden)
                 .background(Theme.background.ignoresSafeArea())
-                .navigationDestination(for: Page.self) { page in
-                    Group {
-                        switch page {
-                        case .downloads: DownloadsView()
-                        default: SettingsView()
-                        }
-                    }
-                    .scrollContentBackground(.hidden)
-                    .background(Theme.background.ignoresSafeArea())
-                }
         }
     }
 }
 
-/** Films and series in one tab at a narrow width, switched at the top. */
-struct BrowseView: View {
-    @State private var series = false
+extension EnvironmentValues {
+    /** Opens Downloads where it lives at a narrow width: in Library (for Home's Downloads icon). */
+    @Entry var showDownloads: (() -> Void)? = nil
+}
+
+/** A tab's pages switched at the top, as one control in the bar; a single page shows on its own. */
+private struct Switched<Choice: Hashable, Page: View>: View {
+    let label: String
+    let choices: [(Choice, String)]
+    @Binding var choice: Choice
+    @ViewBuilder let page: (Choice) -> Page
 
     var body: some View {
-        Group { if series { SeriesListView() } else { FilmsView() } }
+        // A choice that's gone (a playlist provider has no films) falls back to the first.
+        let shown = choices.contains { $0.0 == choice } ? choice : choices[0].0
+        // The switcher stands in for the page's title, so no large title repeats it below.
+        page(shown)
+            .inlineTitle()
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Picker("Browse", selection: $series) {
-                        Text("Films").tag(false)
-                        Text("Series").tag(true)
+                if choices.count > 1 {
+                    ToolbarItem(placement: .principal) {
+                        Picker(label, selection: $choice) {
+                            ForEach(choices, id: \.0) { Text($0.1).tag($0.0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .fixedSize()
                     }
-                    .pickerStyle(.segmented)
-                    .fixedSize()
                 }
             }
+    }
+}
+
+/** Live TV, films and series in one tab at a narrow width. Films and series come only from Xtream providers. */
+struct BrowseView: View {
+    @Environment(AppModel.self) private var app
+    /** The last one chosen, Live TV at first: what most people watch most. */
+    @SceneStorage("browse") private var choice: Page = .live
+
+    var body: some View {
+        let choices: [(Page, String)] = app.provider?.isXtream == true
+            ? [(.live, "Live TV"), (.films, "Films"), (.series, "Series")] : [(.live, "Live TV")]
+        Switched(label: "Browse", choices: choices, choice: $choice) { page in
+            switch page {
+            case .films: FilmsView()
+            case .series: SeriesListView()
+            default: LiveView()
+            }
+        }
+    }
+}
+
+/** My List and Downloads in one tab at a narrow width. Downloads only come from Xtream providers. */
+struct LibraryView: View {
+    @Environment(AppModel.self) private var app
+    @Binding var choice: Page
+
+    var body: some View {
+        let choices: [(Page, String)] = Downloads.available && app.provider?.isXtream == true
+            ? [(.myList, "My List"), (.downloads, "Downloads")] : [(.myList, "My List")]
+        Switched(label: "Library", choices: choices, choice: $choice) { page in
+            if page == .downloads { DownloadsView() } else { MyListView() }
+        }
     }
 }
 

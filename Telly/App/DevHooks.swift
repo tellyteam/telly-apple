@@ -7,7 +7,7 @@ import SwiftUI
  *
  * - `TELLY_DEV_PROVIDER=server|username|password`: with no provider yet, signs in to that one
  *   (plain HTTP allowed), such as the fake provider `npm run dev` serves in telly-lg.
- * - `TELLY_DEV_TAB=home|live|browse|mylist|search`: the iPhone tab to open on.
+ * - `TELLY_DEV_TAB=home|browse|library|search|settings`: the iPhone tab to open on.
  * - `TELLY_DEV_OPEN=film|series`: opens the newest film or series from Home.
  * - `TELLY_DEV_PLAY=film|live`: plays the newest film, or the first channel.
  * - `TELLY_DEV_LANDSCAPE=1`: turns an iPhone to landscape, as if held sideways.

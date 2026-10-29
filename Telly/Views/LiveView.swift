@@ -24,6 +24,8 @@ struct LiveView: View {
                     Button { app.playChannel(c, in: group == Self.favourites ? channels : nil) } label: { ChannelRow(channel: c) }
                         .swipeActions { favouriteSwipe(c) }
                         .contextMenu { favouriteSwipe(c) }
+                        // On the page's dark slate, not black rows that make the bars look like blocks over them.
+                        .listRowBackground(Color.clear)
                 }
                 .listStyle(.plain)
                 .filterField($filter, prompt: "Filter channels")

@@ -3,7 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.compactWidth) private var compact
-    /** On iPhone: Downloads and Settings as small icons at the top right, with no bar for them. */
+    /** On iPhone: Refresh and Downloads at the top right, with no bar for them. */
     var shortcuts = false
 
     var body: some View {
@@ -18,7 +18,7 @@ struct HomeView: View {
                              ? "Pick something from Live TV, Series or Films, and it'll show up here next time."
                              : "Pick something from Live TV, and it'll show up here next time.").foregroundStyle(Theme.muted)
                     }
-                    // Below Downloads and Settings, when they're over the top.
+                    // Below Refresh and Downloads, when they're over the top.
                     .padding(.horizontal, pageInset(compact)).padding(.top, shortcuts ? 60 : 20)
                 }
                 if !app.continueWatching.isEmpty {
@@ -71,21 +71,22 @@ struct HomeView: View {
             }
             // Room for the buttons beside the first heading, clear of the row below it.
             .padding(.top, shortcuts ? 10 : 0)
-            .overlay(alignment: .topTrailing) {
-                if shortcuts {
-                    HStack(spacing: 10) {
-                        RefreshIcon()
-                        if Downloads.available && app.provider?.isXtream == true { ShortcutIcon(page: .downloads) }
-                        ShortcutIcon(page: .settings)
-                    }
-                    .padding(.trailing, pageInset(compact))
-                }
-            }
             .padding(.bottom, 40)
             // Smaller cards on a phone, so a row shows more than two.
             .environment(\.cardScale, compact ? 0.78 : 1)
         }
         .refreshable { await app.refresh() }
+        // Over the page, not in what scrolls: they stay at the top as Home scrolls under them.
+        .overlay(alignment: .topTrailing) {
+            if shortcuts {
+                HStack(spacing: 10) {
+                    RefreshIcon()
+                    if Downloads.available && app.provider?.isXtream == true { DownloadsIcon() }
+                }
+                .padding(.top, 10)
+                .padding(.trailing, pageInset(compact))
+            }
+        }
         .navigationTitle("")
         .inlineTitle()
         // Only the billboard's artwork runs up under the status bar; without one, Home starts below it.
@@ -127,18 +128,19 @@ private struct Hero: View {
     }
 }
 
-/** Fetches the lists again (PLAYBACK.md, Lists), beside Downloads and Settings; spins while it does. */
+/** Fetches the lists again (PLAYBACK.md, Lists), over the top of Home on iPhone; spins while it does. */
 private struct RefreshIcon: View {
     @Environment(AppModel.self) private var app
 
     var body: some View {
         Button { Task { await app.refresh() } } label: {
             ZStack {
-                if app.refreshing { ProgressView().tint(.white) } else {
-                    Image(systemName: "arrow.clockwise").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                if app.refreshing { ProgressView() } else {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 20, weight: .semibold)).symbolVariant(.fill)
                 }
             }
-            .shortcutDisc()
+            .foregroundStyle(.primary)
+            .tabBarDisc()
         }
         .buttonStyle(.plain)
         .disabled(app.refreshing)
@@ -146,29 +148,55 @@ private struct RefreshIcon: View {
     }
 }
 
-/** Downloads or Settings over the top of Home: an icon on a dark disc, legible over any artwork. */
-private struct ShortcutIcon: View {
-    let page: Page
+/** Refresh in a page's bar (Browse and Library on iPhone), drawn as iOS draws the bar's other buttons. */
+struct RefreshButton: View {
+    @Environment(AppModel.self) private var app
 
     var body: some View {
-        NavigationLink(value: page) {
-            Image(systemName: page.icon)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white)
-                .shortcutDisc()
+        Button { Task { await app.refresh() } } label: {
+            if app.refreshing { ProgressView() } else { Image(systemName: "arrow.clockwise") }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(page.rawValue)
+        .disabled(app.refreshing)
+        .accessibilityLabel(app.refreshing ? "Updating your lists" : "Refresh lists")
     }
 }
 
 extension View {
-    /** Refresh, Downloads and Settings over Home: a light disc with an outline, clear on the dark slate and over artwork. */
-    fileprivate func shortcutDisc() -> some View {
-        frame(width: 44, height: 44)
-            .background(Color.white.opacity(0.16), in: Circle())
-            .overlay(Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
-            .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
+    /** Refresh at the left of the page's bar, where Browse and Library have room for it. */
+    func refreshInBar() -> some View {
+        toolbar { ToolbarItem(placement: .navigation) { RefreshButton() } }
+    }
+}
+
+/** Downloads, beside Refresh over the top of Home on iPhone: a way to Library's Downloads, not a page of its own. */
+private struct DownloadsIcon: View {
+    @Environment(\.showDownloads) private var showDownloads
+
+    var body: some View {
+        Button { showDownloads?() } label: {
+            Image(systemName: Page.downloads.icon)
+                .font(.system(size: 20, weight: .semibold)).symbolVariant(.fill)
+                .foregroundStyle(.primary)
+                .tabBarDisc()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Downloads")
+    }
+}
+
+extension View {
+    /** Made like the tab bar below it: Liquid Glass on iOS 26, the bar's frosted material before. */
+    @ViewBuilder fileprivate func tabBarDisc() -> some View {
+        let sized = frame(width: 44, height: 44).contentShape(Circle())
+        #if os(iOS)
+        if #available(iOS 26, *) {
+            sized.glassEffect(.regular.interactive(), in: .circle)
+        } else {
+            sized.background(.bar, in: Circle())
+        }
+        #else
+        sized.background(.bar, in: Circle())
+        #endif
     }
 }
 
