@@ -12,6 +12,7 @@ private enum ProviderSheet: Identifiable {
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
+    @Environment(\.compactWidth) private var compact
     @State private var sheet: ProviderSheet?
     @State private var confirmRemove = false
     @State private var confirmClearProgress = false
@@ -46,7 +47,8 @@ struct SettingsView: View {
             } header: {
                 Text("Providers")
             } footer: {
-                Text("Each provider keeps its own lists, My List and progress. Switch between them here or at the bottom of the sidebar.")
+                // At a narrow width (an iPhone) there's no sidebar, so no switcher at the bottom of it.
+                Text("Each provider keeps its own lists, My List and progress. " + (compact ? "Switch between them here." : "Switch between them here or at the bottom of the sidebar."))
             }
             if let p = app.provider {
                 SwiftUI.Section(p.name) {
@@ -179,7 +181,7 @@ private struct SyncSection: View {
         } header: {
             Text("Sync")
         } footer: {
-            if app.sync != nil { Text("Scan the QR code with an iPad's camera, or enter the code in Settings → Sync on your other devices. Keep it private: anyone with it can see what you've watched.") }
+            if app.sync != nil { Text("Scan the QR code with an iPhone or iPad's camera, or enter the code in Settings → Sync on your other devices. Keep it private: anyone with it can see what you've watched.") }
             else { Text("Scan the QR code your Fire TV or Mac shows under Settings → Sync → Show code.") }
         }
         .qrScanner(isPresented: $scanning) { text in

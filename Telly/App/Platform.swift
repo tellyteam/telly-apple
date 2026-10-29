@@ -11,6 +11,8 @@ enum Device {
     #if os(iOS)
     /** As the user calls this device: "on this iPad", "on this iPhone". */
     @MainActor static var name: String { UIDevice.current.userInterfaceIdiom == .phone ? "iPhone" : "iPad" }
+    /** Its system, as the user knows it: "iOS" or "iPadOS". */
+    @MainActor static var system: String { UIDevice.current.systemName }
     static let userAgent = "telly-ipad"
     #else
     static let name = "Mac"
