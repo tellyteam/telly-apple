@@ -116,8 +116,13 @@ final class PlayerController {
         av.replaceCurrentItem(with: nil)
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = nil
-        vlc?.stop()
-        vlc = nil
+        if let old = vlc {
+            vlc = nil
+            // Stopped and freed on another thread: VLC's shutdown waits for its video output, which
+            // needs the main thread to take its picture down. Done here, the two can wait on each
+            // other until iOS ends telly for not responding.
+            DispatchQueue.global(qos: .userInitiated).async { old.stop() }
+        }
     }
 
     func shutdown() {
