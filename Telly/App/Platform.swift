@@ -73,8 +73,8 @@ enum Device {
     @MainActor static func watchingOrientation(_ watching: Bool) {
         #if os(iOS)
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
-        // What the app allows (AppDelegate asks): only landscape while watching.
-        orientations = watching ? .landscape : .allButUpsideDown
+        // What the app allows (AppDelegate asks): only landscape while watching, only portrait otherwise.
+        orientations = watching ? .landscape : .portrait
         // After the player's presentation has settled: asked during it, iOS ignores the request.
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(350))
@@ -86,8 +86,11 @@ enum Device {
     }
 
     #if os(iOS)
-    /** The orientations the app allows now (see [watchingOrientation]). */
-    @MainActor static var orientations: UIInterfaceOrientationMask = .all
+    /**
+     * The orientations the app allows now (see [watchingOrientation]). An iPhone's pages are laid
+     * out for portrait: held sideways, the bars take most of the screen. Only the player turns.
+     */
+    @MainActor static var orientations: UIInterfaceOrientationMask = UIDevice.current.userInterfaceIdiom == .phone ? .portrait : .all
     #endif
 
     /** Keeps the screen awake while something plays. */
