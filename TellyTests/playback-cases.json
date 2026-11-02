@@ -58,6 +58,19 @@
     { "name": "nothing after: watched up to it", "seasons": [["1", "2"]], "episode": "2", "watched": [], "next": null, "upTo": "2" },
     { "name": "an earlier episode watched doesn't count", "seasons": [["1", "2", "3"]], "episode": "2", "watched": ["1"], "next": [0, 2], "upTo": "2" }
   ],
+  "newEpisodesBadge": [
+    { "name": "the episode arrived after watching", "episodeAdded": 2000, "seriesAdded": 2500, "watchedAtMs": 1500000, "isNew": true },
+    { "name": "the episode was there before watching, though the series changed since", "episodeAdded": 1000, "seriesAdded": 2000, "watchedAtMs": 1500000, "isNew": false },
+    { "name": "the list lags: the episode's own time counts", "episodeAdded": 2000, "seriesAdded": 1000, "watchedAtMs": 1500000, "isNew": true },
+    { "name": "no episode time: the series' time", "episodeAdded": 0, "seriesAdded": 2000, "watchedAtMs": 1500000, "isNew": true },
+    { "name": "no times at all: never new", "episodeAdded": 0, "seriesAdded": 0, "watchedAtMs": 1500000, "isNew": false },
+    { "name": "older history without a watched time: never new", "episodeAdded": 2000, "seriesAdded": 2000, "watchedAtMs": 0, "isNew": false }
+  ],
+  "continueRecord": [
+    { "name": "under 30 s: not yet", "playedMs": 29999, "live": false, "records": false },
+    { "name": "30 s: counts", "playedMs": 30000, "live": false, "records": true },
+    { "name": "live TV counts straight away", "playedMs": 0, "live": true, "records": true }
+  ],
   "myList": [
     { "name": "nothing watched: as added", "list": ["series:1", "film:2", "series:3"], "watched": [], "order": ["series:1", "film:2", "series:3"] },
     { "name": "a watched series goes last", "list": ["series:1", "series:2", "series:3"], "watched": ["series:1"], "order": ["series:2", "series:3", "series:1"] },

@@ -139,7 +139,7 @@ enum Xtream {
                 let info = e["info"] as? Obj
                 return Channel(id: id, name: label.isEmpty ? "Episode \(id)" : label, group: "Season \(seasonName)",
                                logo: str(info?["movie_image"]), url: streamURL(server, "series", u, p, id, str(e["container_extension"]) ?? "mp4"),
-                               plot: str(info?["plot"]), runtime: info.flatMap(runtime))
+                               added: Double(str(e["added"]) ?? "") ?? 0, plot: str(info?["plot"]), runtime: info.flatMap(runtime))
             }
             return eps.isEmpty ? nil : Season(name: "Season \(seasonName)", episodes: eps)
         }

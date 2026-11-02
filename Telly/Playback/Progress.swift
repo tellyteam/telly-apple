@@ -20,6 +20,11 @@ enum PlaybackRules {
     static let promptMs: Double = 60_000
     /** Earlier than this, an item starts from the beginning. */
     static let minResumeMs: Double = 15_000
+    /** Played for less than this, a film or episode leaves Continue watching as it was (an accidental tap, say). */
+    static let minPlayMs: Double = 30_000
+
+    /** Whether what's playing now counts for Continue watching: live TV at once, anything else after 30 s played. */
+    static func recordsWatching(playedMs: Double, live: Bool) -> Bool { live || playedMs >= minPlayMs }
 
     /** Seconds the next-episode prompt shows, or nil when it doesn't. */
     static func promptSeconds(duration: Double, position: Double, hasNext: Bool, autoNext: Bool, dismissed: Bool, live: Bool) -> Int? {
@@ -107,9 +112,13 @@ enum NewEpisodes {
         return series.added != checked.added || now - checked.at >= 86_400_000
     }
 
-    /** Whether what comes next arrived after it was watched (older history has no time, so never). */
-    static func isNew(_ series: Series, watchedAt: Double) -> Bool {
-        watchedAt > 0 && series.added > 0 && series.added * 1000 > watchedAt
+    /**
+     * Whether what comes next arrived after the series was watched: by the episode's own added time,
+     * or the series' when the provider doesn't give it (older history has no time, so never).
+     */
+    static func isNew(episodeAdded: Double, seriesAdded: Double, watchedAt: Double) -> Bool {
+        let added = episodeAdded > 0 ? episodeAdded : seriesAdded
+        return watchedAt > 0 && added > 0 && added * 1000 > watchedAt
     }
 
     struct Check: Codable { var added: Double; var at: Double }

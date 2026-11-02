@@ -83,6 +83,19 @@ final class PlaybackRulesTests: XCTestCase {
         XCTAssertTrue(NewEpisodes.due(s, checked: .init(added: 99, at: 0), now: 1))
     }
 
+    func testNewEpisodesBadge() throws {
+        for c in try cases("newEpisodesBadge") {
+            XCTAssertEqual(NewEpisodes.isNew(episodeAdded: num(c, "episodeAdded")!, seriesAdded: num(c, "seriesAdded")!, watchedAt: num(c, "watchedAtMs")!),
+                           bool(c, "isNew"), c["name"] as! String)
+        }
+    }
+
+    func testContinueRecord() throws {
+        for c in try cases("continueRecord") {
+            XCTAssertEqual(PlaybackRules.recordsWatching(playedMs: num(c, "playedMs")!, live: bool(c, "live")), bool(c, "records"), c["name"] as! String)
+        }
+    }
+
     func testMyList() throws {
         for c in try cases("myList") {
             let watched = Set(c["watched"] as! [String])

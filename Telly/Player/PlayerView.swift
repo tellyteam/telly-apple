@@ -14,6 +14,10 @@ struct PlayerView: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var scrubbing: Double?
     @State private var lastSaved = Date()
+    /** Time this item has actually played (ms), and whether Continue watching has it yet (PLAYBACK.md). */
+    @State private var played: Double = 0
+    @State private var lastPosition: Double?
+    @State private var recorded = false
     @State private var nextCountdown: Int?
     @State private var dismissedPrompt = false
     /** Offline with nothing downloaded after this: said at the end instead of playing on. */
@@ -291,6 +295,11 @@ struct PlayerView: View {
         nextCountdown = nil
         dismissedPrompt = false
         endNote = nil
+        played = 0
+        lastPosition = nil
+        recorded = false
+        // Live TV counts straight away; anything else once it has played for 30 s (countPlayed).
+        if request.live { record() }
         NowPlaying.shared.refresh()
         // A downloaded film or episode plays from the device.
         let source = Downloads.shared.localURL(app.activeId, item.url)?.absoluteString ?? item.url
@@ -300,10 +309,25 @@ struct PlayerView: View {
     /** Twice a second: save every 10 s, and count down to the next episode in the last minute. */
     private func tick() {
         updateNowPlaying()
+        countPlayed()
         guard !request.live, player.duration > 0 else { return }
         if Date().timeIntervalSince(lastSaved) >= 10 { save() }
         nextCountdown = PlaybackRules.promptSeconds(duration: player.duration, position: player.position, hasNext: hasNext,
                                                     autoNext: app.settings.autoNext, dismissed: dismissedPrompt, live: request.live)
+    }
+
+    /** Adds up time actually played, not seeking, until it's long enough to count for Continue watching. */
+    private func countPlayed() {
+        defer { lastPosition = player.position }
+        guard !recorded, player.playing, let last = lastPosition else { return }
+        let step = player.position - last
+        if step > 0 && step < 2_000 { played += step }
+        if PlaybackRules.recordsWatching(playedMs: played, live: request.live) { record() }
+    }
+
+    private func record() {
+        recorded = true
+        app.recordWatching(request, index: index)
     }
 
     private func save() {
@@ -327,7 +351,6 @@ struct PlayerView: View {
         guard let next = nextIndex else { return }
         if markWatched && player.duration > 0 { app.saveProgress(item.url, position: player.duration, duration: player.duration) } else { save() }
         index = next
-        app.recordWatching(request, index: index)
         start(at: Playback.resumePosition(app.progressOf(item.url)))
     }
 
@@ -335,7 +358,6 @@ struct PlayerView: View {
         let next = index + by
         guard request.items.indices.contains(next) else { return }
         index = next
-        app.recordWatching(request, index: index)
         start(at: 0)
         scheduleHide()
     }

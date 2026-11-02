@@ -16,6 +16,8 @@ struct Artwork: View {
     let url: String?
     let title: String
     var contentMode: ContentMode = .fill
+    /** Shown when [url] gives no picture (missing, empty or broken). */
+    var fallback: String? = nil
     @State private var image: CGImage?
 
     var body: some View {
@@ -25,10 +27,13 @@ struct Artwork: View {
             if let image { Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: contentMode).transition(.opacity) } else { placeholder }
         }
         .clipped()
-        .task(id: Artwork.allowed(url, app)) {
+        .task(id: [url, fallback].compactMap { Artwork.allowed($0, app) }) {
             image = nil
-            guard let allowed = Artwork.allowed(url, app) else { return }
-            let loaded = await ArtCache.image(allowed, providerId: app.activeId)
+            var loaded: CGImage?
+            for candidate in [url, fallback] {
+                guard loaded == nil, let allowed = Artwork.allowed(candidate, app) else { continue }
+                loaded = await ArtCache.image(allowed, providerId: app.activeId)
+            }
             withAnimation(.easeOut(duration: 0.2)) { image = loaded }
         }
     }
@@ -129,6 +134,8 @@ struct LandscapeCard: View {
     let title: String
     let subtitle: String
     let image: String?
+    /** Shown when [image] gives no picture. */
+    var fallback: String?
     var badge: String?
     var progress: Double?
 
@@ -136,7 +143,7 @@ struct LandscapeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Artwork(url: image, title: title)
+            Artwork(url: image, title: title, fallback: fallback)
                 .frame(width: width, height: width * 9 / 16)
                 .overlay(alignment: .topLeading) {
                     if let badge {

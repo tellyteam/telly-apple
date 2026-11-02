@@ -541,13 +541,16 @@ final class AppModel {
 
     func seriesHistory(_ seriesId: String) -> LastWatched? { history.first { $0.seriesId == seriesId } }
 
+    /** Continue watching follows once it has played long enough (the player calls [recordWatching]). */
     func play(_ req: PlayRequest) {
         Downloads.shared.watching = true
         player = req
-        recordWatching(req, index: req.index)
     }
 
-    /** Called when playback starts and on every episode change, so "pick up" always lands right. */
+    /**
+     * Called once something has played for 30 s (live TV at once), and again for each episode after,
+     * so "pick up" always lands right, and a brief play doesn't move it (PLAYBACK.md).
+     */
     func recordWatching(_ req: PlayRequest, index: Int) {
         history = history.remembering(LastWatched(heading: req.heading, live: req.live, index: index, items: req.items,
                                                   seriesId: req.seriesId, art: req.art, at: nowMs()))
@@ -600,6 +603,15 @@ final class AppModel {
     @ObservationIgnored private var checkQueued = false
     @ObservationIgnored private var checkNextAll = false
     @ObservationIgnored private var checkNextSeries: Set<String> = []
+    /** Episodes a series' page has just fetched, for its check to use instead of fetching again. */
+    @ObservationIgnored private var fetchedByPage: [String: SeriesData] = [:]
+
+    /** A series' page has fetched its episodes: Continue watching and its record follow straight away. */
+    func seriesPageFetched(_ series: Series, _ data: SeriesData) async {
+        fetchedByPage[series.id] = data
+        await checkForNewEpisodes(only: [series.id])
+        fetchedByPage[series.id] = nil
+    }
 
     /**
      * Brings back series watched to the end of what they had, once the provider adds more: at the
@@ -634,8 +646,12 @@ final class AppModel {
             guard let sid = entry.seriesId, only?.contains(sid) ?? true, let show = seriesItem(sid) else { continue }
             let key = favKey(.series, sid), mark = ledger.watched[key]
             let recorded = mark?.on == true && mark?.episode == entry.current.id
-            guard NewEpisodes.due(show, checked: checks[sid], now: nowMs()) || !recorded,
-                  let data = try? await Repo.seriesData(p, show, .network), provider == p else { continue }
+            // What the series' page fetched is used whether due or not: it costs nothing.
+            let page = fetchedByPage[sid]
+            guard page != nil || NewEpisodes.due(show, checked: checks[sid], now: nowMs()) || !recorded else { continue }
+            var data = page
+            if data == nil { data = try? await Repo.seriesData(p, show, .network) }
+            guard let data, provider == p else { continue }
             checks[sid] = NewEpisodes.Check(added: show.added, at: nowMs())
             let (next, upTo) = NewEpisodes.afterWatched(data.seasons, entry.current.id, watched: watched)
             guard let (season, i) = next else {
@@ -656,16 +672,19 @@ final class AppModel {
             var back = entry
             back.items = season.episodes
             back.index = i
-            back.newEpisodes = NewEpisodes.isNew(show, watchedAt: entry.at)
+            back.newEpisodes = NewEpisodes.isNew(episodeAdded: season.episodes[i].added, seriesAdded: show.added, watchedAt: entry.at)
             history = history.map { $0.slot == entry.slot ? back : $0 }
             keep("history", history)
         }
         // Watched series that Continue watching's short history has let go: brought back the same way.
         for (key, mark) in ledger.watched where mark.on && key.hasPrefix("series:") {
             let sid = String(key.dropFirst("series:".count))
+            let page = fetchedByPage[sid]
             guard only?.contains(sid) ?? true, !history.contains(where: { $0.seriesId == sid }), let show = seriesItem(sid),
-                  NewEpisodes.due(show, checked: checks[sid], now: nowMs()),
-                  let data = try? await Repo.seriesData(p, show, .network), provider == p else { continue }
+                  page != nil || NewEpisodes.due(show, checked: checks[sid], now: nowMs()) else { continue }
+            var data = page
+            if data == nil { data = try? await Repo.seriesData(p, show, .network) }
+            guard let data, provider == p else { continue }
             checks[sid] = NewEpisodes.Check(added: show.added, at: nowMs())
             let (next, upTo) = NewEpisodes.afterWatched(data.seasons, mark.episode, watched: watched)
             guard let (season, i) = next else {
@@ -674,7 +693,7 @@ final class AppModel {
             }
             setWatched(key, false)
             let back = LastWatched(heading: show.name, live: false, index: i, items: season.episodes, seriesId: sid, art: show.cover,
-                                   at: mark.at, newEpisodes: NewEpisodes.isNew(show, watchedAt: mark.at))
+                                   at: mark.at, newEpisodes: NewEpisodes.isNew(episodeAdded: season.episodes[i].added, seriesAdded: show.added, watchedAt: mark.at))
             history = (history + [back]).sorted { $0.at > $1.at }
             keep("history", history)
         }

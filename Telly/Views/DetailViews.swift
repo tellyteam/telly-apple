@@ -164,7 +164,10 @@ struct SeriesDetailView: View {
         guard let p = app.provider else { return }
         if let cached = try? await Repo.seriesData(p, series, .cache) { apply(cached) }
         do {
-            if let fresh = try await Repo.seriesData(p, series, .network) { apply(fresh) }
+            if let fresh = try await Repo.seriesData(p, series, .network) {
+                apply(fresh)
+                await app.seriesPageFetched(series, fresh)
+            }
         } catch {
             if data == nil { failed = error.localizedDescription }
         }
@@ -188,7 +191,8 @@ private struct EpisodeRow: View {
         let p = app.progressOf(episode.url)
         Button(action: play) {
             HStack(alignment: .top, spacing: compact ? 12 : 16) {
-                Artwork(url: episode.logo, title: "")
+                // A new episode's still is often missing or empty for a few hours: the series' poster instead.
+                Artwork(url: episode.logo, title: "", fallback: series.cover)
                     .frame(width: compact ? 128 : 200, height: compact ? 72 : 112)
                     .overlay(alignment: .bottom) { if let p, !p.finished { ProgressBar(fraction: p.fraction).padding(8) } }
                     .clipShape(RoundedRectangle(cornerRadius: 10))
