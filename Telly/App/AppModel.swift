@@ -103,6 +103,8 @@ final class AppModel {
     private var ledger = SyncLedger()
 
     @ObservationIgnored private var syncSoonTask: Task<Void, Never>?
+    /** The signed telly Plus transaction the relay last accepted for this household. */
+    @ObservationIgnored private var plusShown: String?
 
     /** Waits until telly's files can be read (see [start]). Tests replace it. */
     @ObservationIgnored var untilUnlocked: () async -> Void = { await Device.untilUnlocked() }
@@ -754,6 +756,7 @@ final class AppModel {
         Keychain.set("sync", String(decoding: try JSONEncoder().encode(config), as: UTF8.self))
         sync = config
         syncedAt = nil
+        plusShown = nil
         await syncNow(force: true)
         if let error = syncError {
             Keychain.delete("sync")
@@ -808,6 +811,11 @@ final class AppModel {
         do {
             let now = nowMs()
             let keys = SyncCrypto.deriveKeys(config.code)
+            // The household's telly Plus, shown to the relay once per purchase or renewal. A refusal
+            // isn't this sync's error: if the relay needs it, the sync itself says so.
+            if let signed = Plus.shared.signedTransaction, signed != plusShown {
+                if (try? await SyncClient.showPlus(config.relay, keys, signedTransaction: signed)) != nil { plusShown = signed }
+            }
             var locals: [String: (id: String, local: SyncLocal.Local)] = [:]
             for saved in providers {
                 let tag = SyncCrypto.providerTag(keys, identity: saved.provider.syncIdentity)

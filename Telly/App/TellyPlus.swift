@@ -25,6 +25,11 @@ final class Plus {
     private(set) var unlocked: Bool
     /** Set while telly Plus is offered: from Settings, or a locked Sync or Download button. */
     var offered = false
+    /**
+     * The current subscription as Apple signed it, for the sync relay: it opens Sync for the whole
+     * household, Fire TV and LG included. Nil without one.
+     */
+    @ObservationIgnored private(set) var signedTransaction: String?
 
     @ObservationIgnored private var updates: Task<Void, Never>?
     private static let savedKey = "plus.unlocked"
@@ -49,12 +54,17 @@ final class Plus {
     func refresh() async {
         guard !Self.included else { return }
         var owned: [Owned] = []
+        var latest: (expires: Date, jws: String)?
         for await result in Transaction.currentEntitlements {
             // Only transactions Apple signed count.
             guard case let .verified(t) = result else { continue }
             owned.append(Owned(productId: t.productID, expires: t.expirationDate, revoked: t.revocationDate))
+            if t.productID == Self.productId, t.revocationDate == nil, let e = t.expirationDate, e > (latest?.expires ?? .distantPast) {
+                latest = (e, result.jwsRepresentation)
+            }
             await t.finish()
         }
+        signedTransaction = latest?.jws
         set(Self.isUnlocked(owned, now: Date()))
     }
 

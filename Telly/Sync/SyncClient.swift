@@ -31,6 +31,7 @@ enum SyncClient {
         switch status {
         case 200..<300: return data
         case 401: throw SyncError(message: "This sync code is no longer valid on the relay.")
+        case 402: throw SyncError(message: "Sync needs telly Plus for this household.")
         case 409: throw SyncError(message: "Too many devices are linked to this code (12 at most).")
         default: throw SyncError(message: "The sync relay answered \(status).")
         }
@@ -60,6 +61,15 @@ enum SyncClient {
         guard let url = URL(string: "\(base(relay))/v1/\(keys.mailbox)/\(device)") else { throw SyncError(message: "The relay address isn't right.") }
         let body = try SyncCrypto.seal(keys, device: device, bundle.json())
         _ = try await send("PUT", url, keys, body: body)
+    }
+
+    /**
+     * Shows the relay this household's telly Plus: Apple's signed transaction, which it checks with
+     * Apple's certificates and keeps only as a hashed id and the day it ends.
+     */
+    static func showPlus(_ relay: String, _ keys: SyncCrypto.Keys, signedTransaction: String) async throws {
+        guard let url = URL(string: "\(base(relay))/v1/\(keys.mailbox)/plus") else { throw SyncError(message: "The relay address isn't right.") }
+        _ = try await send("PUT", url, keys, body: Data(signedTransaction.utf8))
     }
 
     /** Takes this device's parcel off the relay (the others keep theirs). */
