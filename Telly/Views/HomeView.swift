@@ -224,7 +224,9 @@ private struct ContinueCard: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
+            // The app-wide accent would otherwise colour the icon blue beside the red text.
             Button(role: .destructive) { app.removeFromHistory(entry) } label: { Label("Remove from Continue watching", systemImage: "xmark.circle") }
+                .tint(.red)
         }
     }
 }
