@@ -61,6 +61,28 @@ final class PlaybackRulesTests: XCTestCase {
         }
     }
 
+    func testSeriesNextWatched() throws {
+        for c in try cases("seriesNextWatched") {
+            let seasons = (c["seasons"] as! [[String]]).enumerated().map { n, ids in
+                Season(name: "Season \(n + 1)", episodes: ids.map { Channel(id: $0, name: $0, group: "", url: "http://host/series/u/p/\($0).mkv") })
+            }
+            let watched = Set(c["watched"] as! [String])
+            let (next, upTo) = NewEpisodes.afterWatched(seasons, c["episode"] as! String) { watched.contains($0.id) }
+            XCTAssertEqual(next.map { s, i in [seasons.firstIndex(of: s)!, i] }, (c["next"] as? [NSNumber])?.map(\.intValue), c["name"] as! String)
+            XCTAssertEqual(upTo, c["upTo"] as! String, c["name"] as! String)
+        }
+    }
+
+    /** A provider's list can lag behind its series, so a series is fetched daily even when the list says nothing changed. */
+    func testSeriesDueDailyEvenWhenTheListSaysUnchanged() {
+        let s = Series(id: "1", name: "S", group: "", cover: nil, plot: nil, added: 100)
+        let day = 86_400_000.0
+        XCTAssertTrue(NewEpisodes.due(s, checked: nil, now: 0))
+        XCTAssertFalse(NewEpisodes.due(s, checked: .init(added: 100, at: 0), now: day - 1))
+        XCTAssertTrue(NewEpisodes.due(s, checked: .init(added: 100, at: 0), now: day))
+        XCTAssertTrue(NewEpisodes.due(s, checked: .init(added: 99, at: 0), now: 1))
+    }
+
     func testMyList() throws {
         for c in try cases("myList") {
             let watched = Set(c["watched"] as! [String])

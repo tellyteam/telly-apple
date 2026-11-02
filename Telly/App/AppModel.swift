@@ -209,15 +209,18 @@ final class AppModel {
             // Old lists are fetched with telly on screen, not in a background launch: that's too
             // short-lived for big lists, which it would stop part-way (the overnight wake fetches
             // them itself: refreshListsOvernight).
-            if always { await refresh() } else if !Device.inBackground { await refreshIfStale() }
+            // Other devices' changes first, so the one episode check after the lists sees them.
             await syncNow()
+            if always { await refresh() } else if !Device.inBackground, !(await refreshIfStale()) { await checkForNewEpisodes() }
         }
     }
 
-    /** Fetches the lists again if they're old, or there are none. */
-    private func refreshIfStale() async {
-        guard provider != nil, savedListsRead else { return }
-        if live == nil || listsUpdatedAt.map({ nowMs() - $0 >= Self.listsStaleMs }) ?? true { await refresh() }
+    /** Fetches the lists again if they're old, or there are none; whether it did (and checked for new episodes). */
+    @discardableResult private func refreshIfStale() async -> Bool {
+        guard provider != nil, savedListsRead else { return false }
+        guard live == nil || listsUpdatedAt.map({ nowMs() - $0 >= Self.listsStaleMs }) ?? true else { return false }
+        await refresh()
+        return true
     }
 
     // Each list is prepared off the main thread and only swapped in here; the list it replaces is
@@ -593,26 +596,59 @@ final class AppModel {
     // MARK: New episodes
 
     @ObservationIgnored private var checkingEpisodes = false
+    /** Asked for while a check ran: another pass straight after it, for these series (or all). */
+    @ObservationIgnored private var checkQueued = false
+    @ObservationIgnored private var checkNextAll = false
+    @ObservationIgnored private var checkNextSeries: Set<String> = []
 
     /**
      * Brings back series watched to the end of what they had, once the provider adds more: at the
-     * next episode, marked "New episodes" when they arrived after it was watched. Each series is
-     * only fetched again after the provider has changed it, or to record it as watched (PLAYBACK.md).
+     * next episode not yet watched, marked "New episodes" when they arrived after it was watched.
+     * Each series is only fetched again after the provider has changed it, daily, or to record it as
+     * watched (PLAYBACK.md). [only]: just these series, the ones a sync changed. Asked for while a
+     * check runs, it runs once more after it, rather than twice at once.
      */
-    func checkForNewEpisodes() async {
-        guard let p = provider, let id = activeId, !checkingEpisodes, series != nil else { return }
+    func checkForNewEpisodes(only: Set<String>? = nil) async {
+        if checkingEpisodes {
+            checkQueued = true
+            if let only { checkNextSeries.formUnion(only) } else { checkNextAll = true }
+            return
+        }
         checkingEpisodes = true
         defer { checkingEpisodes = false }
+        var only = only
+        while true {
+            await checkEpisodes(only: only)
+            guard checkQueued else { break }
+            only = checkNextAll ? nil : checkNextSeries
+            (checkQueued, checkNextAll, checkNextSeries) = (false, false, [])
+        }
+    }
+
+    private func checkEpisodes(only: Set<String>?) async {
+        guard let p = provider, let id = activeId, series != nil else { return }
         var checks = Store.read("episode-checks-\(id)", as: [String: NewEpisodes.Check].self) ?? [:]
+        // Episodes finished here or on a linked device count alike.
+        let watched = { (e: Channel) in self.progressOf(e.url)?.finished == true }
         for entry in history where !entry.live && !entry.isFilm && !entry.shownInContinue(progressOf) {
-            guard let sid = entry.seriesId, let show = seriesItem(sid) else { continue }
+            guard let sid = entry.seriesId, only?.contains(sid) ?? true, let show = seriesItem(sid) else { continue }
             let key = favKey(.series, sid), mark = ledger.watched[key]
             let recorded = mark?.on == true && mark?.episode == entry.current.id
             guard NewEpisodes.due(show, checked: checks[sid], now: nowMs()) || !recorded,
                   let data = try? await Repo.seriesData(p, show, .network), provider == p else { continue }
             checks[sid] = NewEpisodes.Check(added: show.added, at: nowMs())
-            guard let (season, i) = NewEpisodes.after(data.seasons, entry.current.id) else {
-                if !recorded { setWatched(key, true, episode: entry.current.id) }
+            let (next, upTo) = NewEpisodes.afterWatched(data.seasons, entry.current.id, watched: watched)
+            guard let (season, i) = next else {
+                if !(mark?.on == true && mark?.episode == upTo) { setWatched(key, true, episode: upTo) }
+                // Watched further on another device: Continue watching's entry follows, still out of the row.
+                if upTo != entry.current.id, let season = data.seasons.first(where: { $0.episodes.contains { $0.id == upTo } }) {
+                    var on = entry
+                    on.items = season.episodes
+                    on.index = season.episodes.firstIndex { $0.id == upTo } ?? 0
+                    on.newEpisodes = nil
+                    history = history.map { $0.slot == entry.slot ? on : $0 }
+                    keep("history", history)
+                }
                 continue
             }
             if mark?.on == true { setWatched(key, false) }
@@ -627,11 +663,15 @@ final class AppModel {
         // Watched series that Continue watching's short history has let go: brought back the same way.
         for (key, mark) in ledger.watched where mark.on && key.hasPrefix("series:") {
             let sid = String(key.dropFirst("series:".count))
-            guard !history.contains(where: { $0.seriesId == sid }), let show = seriesItem(sid),
+            guard only?.contains(sid) ?? true, !history.contains(where: { $0.seriesId == sid }), let show = seriesItem(sid),
                   NewEpisodes.due(show, checked: checks[sid], now: nowMs()),
                   let data = try? await Repo.seriesData(p, show, .network), provider == p else { continue }
             checks[sid] = NewEpisodes.Check(added: show.added, at: nowMs())
-            guard let (season, i) = NewEpisodes.after(data.seasons, mark.episode) else { continue }
+            let (next, upTo) = NewEpisodes.afterWatched(data.seasons, mark.episode, watched: watched)
+            guard let (season, i) = next else {
+                if upTo != mark.episode { setWatched(key, true, episode: upTo) }
+                continue
+            }
             setWatched(key, false)
             let back = LastWatched(heading: show.name, live: false, index: i, items: season.episodes, seriesId: sid, art: show.cover,
                                    at: mark.at, newEpisodes: NewEpisodes.isNew(show, watchedAt: mark.at))
@@ -729,9 +769,11 @@ final class AppModel {
 
     /** Coming back to the front. */
     func becameActive() {
-        Task { await syncNow() }
-        // Lists that went old while telly was in the background, or weren't fetched when it was woken there.
-        Task { await refreshIfStale() }
+        Task {
+            await syncNow()
+            // Lists that went old while telly was in the background, or weren't fetched when it was woken there.
+            await refreshIfStale()
+        }
     }
 
     /**
@@ -776,16 +818,39 @@ final class AppModel {
                 }
                 // Playback (or a switch of provider) may have started meanwhile; its own saves win.
                 guard player == nil, entry.id == self.activeId else { continue }
+                let changed = Self.seriesChanged(from: (progress, history, ledger.watched), to: r)
                 (progress, history, favourites, ledger) = (r.progress, r.history, r.favourites, r.ledger)
                 Records.save(entry.id, r)
                 seedWatched()
                 // Episodes watched on a linked device.
                 clearWatchedDownloads()
+                // A series watched to the end there is recorded here, without waiting for a refresh.
+                if !changed.isEmpty { Task { await self.checkForNewEpisodes(only: changed) } }
             }
             syncedAt = nowMs()
         } catch {
             syncError = (error as? SyncError)?.message ?? "Couldn't reach the sync relay."
         }
+    }
+
+    /**
+     * The series a sync changed something of: their Continue watching entry, progress on one of its
+     * episodes, or their watched record. Only these need the episode check after it.
+     */
+    static func seriesChanged(from old: (progress: [String: Progress], history: [LastWatched], watched: [String: SyncParcel.Watched]),
+                              to new: Records.Set) -> Set<String> {
+        var ids = Set<String>()
+        let before = Dictionary(old.history.map { ($0.slot, $0) }, uniquingKeysWith: { a, _ in a })
+        for h in new.history where !h.live && !h.isFilm {
+            guard let sid = h.seriesId else { continue }
+            let progressChanged = h.items.contains { e in
+                let k = Playback.progressKey(e.url)
+                return new.progress[k] != old.progress[k]
+            }
+            if before[h.slot] != h || progressChanged { ids.insert(sid) }
+        }
+        for (k, v) in new.ledger.watched where k.hasPrefix("series:") && old.watched[k] != v { ids.insert(String(k.dropFirst("series:".count))) }
+        return ids
     }
 
     /** A shared history entry as one this device can play, from its own lists and login. */
@@ -801,7 +866,9 @@ final class AppModel {
         case .series:
             guard let sid = e.series, let s = seriesItem(sid), let p = provider else { return nil }
             var data = try? await Repo.seriesData(p, s, .cache)
-            if data == nil { data = try? await Repo.seriesData(p, s, .network) }
+            // A copy saved before that episode arrived doesn't have it: the series is fetched again.
+            if data?.seasons.contains(where: { $0.episodes.contains { $0.id == e.id } }) != true,
+               let fresh = try? await Repo.seriesData(p, s, .network) { data = fresh }
             for season in data?.seasons ?? [] {
                 if let i = season.episodes.firstIndex(where: { $0.id == e.id }) {
                     return LastWatched(heading: s.name, live: false, index: i, items: season.episodes, seriesId: s.id, art: s.cover, at: e.at)

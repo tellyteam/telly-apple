@@ -84,10 +84,27 @@ enum NewEpisodes {
         return nil
     }
 
-    /** Whether a series needs fetching again: after the provider changes it, or daily if it doesn't say. */
+    /**
+     * Like [after], past episodes already watched (on another device, say): where watching
+     * continues, or nil when everything after [watchedId] is watched too. [upTo] is the last of
+     * those watched in a row from [watchedId], what the series is then watched up to.
+     */
+    static func afterWatched(_ seasons: [Season], _ watchedId: String, watched: (Channel) -> Bool) -> (next: (Season, Int)?, upTo: String) {
+        var upTo = watchedId
+        while let (season, i) = after(seasons, upTo) {
+            if !watched(season.episodes[i]) { return ((season, i), upTo) }
+            upTo = season.episodes[i].id
+        }
+        return (nil, upTo)
+    }
+
+    /**
+     * Whether a series needs fetching again: after the provider changes it, and at least daily, as
+     * a provider's list can show a series' change hours after the series does.
+     */
     static func due(_ series: Series, checked: Check?, now: Double) -> Bool {
         guard let checked else { return true }
-        return series.added > 0 ? series.added != checked.added : now - checked.at >= 86_400_000
+        return series.added != checked.added || now - checked.at >= 86_400_000
     }
 
     /** Whether what comes next arrived after it was watched (older history has no time, so never). */

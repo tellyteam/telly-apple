@@ -51,6 +51,13 @@
     { "name": "an empty later season is skipped: watched", "seasons": [["1", "2"], []], "episode": "2", "next": null },
     { "name": "an empty season between is skipped", "seasons": [["1"], [], ["5"]], "episode": "1", "next": [2, 0] }
   ],
+  "seriesNextWatched": [
+    { "name": "the next episode not yet watched", "seasons": [["1", "2", "3"]], "episode": "1", "watched": ["2"], "next": [0, 2], "upTo": "2" },
+    { "name": "everything after already watched: watched up to the last", "seasons": [["1", "2", "3", "4"]], "episode": "3", "watched": ["4"], "next": null, "upTo": "4" },
+    { "name": "watched on into the next season", "seasons": [["1", "2"], ["3", "4"]], "episode": "1", "watched": ["2", "3"], "next": [1, 1], "upTo": "3" },
+    { "name": "nothing after: watched up to it", "seasons": [["1", "2"]], "episode": "2", "watched": [], "next": null, "upTo": "2" },
+    { "name": "an earlier episode watched doesn't count", "seasons": [["1", "2", "3"]], "episode": "2", "watched": ["1"], "next": [0, 2], "upTo": "2" }
+  ],
   "myList": [
     { "name": "nothing watched: as added", "list": ["series:1", "film:2", "series:3"], "watched": [], "order": ["series:1", "film:2", "series:3"] },
     { "name": "a watched series goes last", "list": ["series:1", "series:2", "series:3"], "watched": ["series:1"], "order": ["series:2", "series:3", "series:1"] },

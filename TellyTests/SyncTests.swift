@@ -231,3 +231,22 @@ final class SyncLinkTests: XCTestCase {
         XCTAssertFalse(merged.json().contains("logins"))
     }
 }
+
+final class SyncCheckTests: XCTestCase {
+    private func episode(_ id: String) -> Channel { Channel(id: id, name: id, group: "", url: "http://host/series/u/p/\(id).vod") }
+
+    /** After a sync, only series whose entry, episode progress or watched record changed are checked again. */
+    @MainActor func testSeriesChangedBySync() {
+        let a = LastWatched(heading: "A", live: false, index: 0, items: [episode("1"), episode("2")], seriesId: "a", at: 1)
+        let b = LastWatched(heading: "B", live: false, index: 0, items: [episode("3")], seriesId: "b", at: 1)
+        let c = LastWatched(heading: "C", live: false, index: 0, items: [episode("4")], seriesId: "c", at: 1)
+        let old = (progress: ["series/2.vod": Progress(position: 1, duration: 10, at: 1)], history: [a, b, c],
+                   watched: ["series:d": SyncParcel.Watched(at: 1, on: false)])
+        var cMoved = c
+        cMoved.at = 2
+        let new = Records.Set(favourites: [], progress: ["series/2.vod": Progress(position: 9, duration: 10, at: 2)], history: [a, b, cMoved],
+                              ledger: SyncLedger(watched: ["series:d": SyncParcel.Watched(at: 2, on: true, episode: "9")]))
+        XCTAssertEqual(AppModel.seriesChanged(from: old, to: new), ["a", "c", "d"])
+        XCTAssertEqual(AppModel.seriesChanged(from: (new.progress, new.history, new.ledger.watched), to: new), [])
+    }
+}
