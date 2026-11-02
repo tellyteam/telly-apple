@@ -7,8 +7,9 @@ struct HomeView: View {
     var shortcuts = false
 
     var body: some View {
-        // No billboard on iPhone: Continue watching, first, shows the same.
-        let hero = shortcuts ? nil : app.continueWatching.first
+        // No billboard on a phone-sized screen: Continue watching, first, shows the same. A
+        // folding iPhone opened out has the room for one.
+        let hero = shortcuts && compact ? nil : app.continueWatching.first
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
                 if let hero { Hero(entry: hero) } else if app.continueWatching.isEmpty {
@@ -76,7 +77,12 @@ struct HomeView: View {
             .environment(\.cardScale, compact ? 0.78 : 1)
         }
         .refreshable { await app.refresh() }
+        .navigationTitle("")
+        .inlineTitle()
+        // Only the billboard's artwork runs up under the status bar; without one, Home starts below it.
+        .ignoresSafeArea(edges: hero == nil ? [] : .top)
         // Over the page, not in what scrolls: they stay at the top as Home scrolls under them.
+        // After the billboard's reach under the status bar, so they stay below it.
         .overlay(alignment: .topTrailing) {
             if shortcuts {
                 HStack(spacing: 10) {
@@ -87,10 +93,6 @@ struct HomeView: View {
                 .padding(.trailing, pageInset(compact))
             }
         }
-        .navigationTitle("")
-        .inlineTitle()
-        // Only the billboard's artwork runs up under the status bar; without one, Home starts below it.
-        .ignoresSafeArea(edges: hero == nil ? [] : .top)
         .background(Theme.background.ignoresSafeArea())
         // A see-through bar rather than none, so the sidebar button stays.
         .clearBar()

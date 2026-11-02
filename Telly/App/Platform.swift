@@ -13,9 +13,12 @@ enum Device {
     @MainActor static var name: String { UIDevice.current.userInterfaceIdiom == .phone ? "iPhone" : "iPad" }
     /** Its system, as the user knows it: "iOS" or "iPadOS". */
     @MainActor static var system: String { UIDevice.current.systemName }
+    /** An iPhone, folded or opened out: laid out with tabs, never the sidebar. */
+    @MainActor static var phone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
     static let userAgent = "telly-ipad"
     #else
     static let name = "Mac"
+    static let phone = false
     static let userAgent = "telly-mac"
     #endif
 
@@ -69,14 +72,13 @@ enum Device {
     }
 
     /**
-     * On iPhone: turns the screen to landscape for watching ([watching] true), and back to
-     * portrait after. An iPad (and a Mac) stays as it is.
+     * On a phone-sized screen: turns it to landscape for watching ([watching] true), and back to
+     * portrait after. An iPad, a folding iPhone opened out (and a Mac) stays as it is.
      */
     @MainActor static func watchingOrientation(_ watching: Bool) {
         #if os(iOS)
-        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
-        // What the app allows (AppDelegate asks): only landscape while watching, only portrait otherwise.
-        orientations = watching ? .landscape : .portrait
+        watchingNow = watching
+        guard !roomy else { return }
         // After the player's presentation has settled: asked during it, iOS ignores the request.
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(350))
@@ -88,11 +90,33 @@ enum Device {
     }
 
     #if os(iOS)
+    @MainActor private static var watchingNow = false
+
     /**
-     * The orientations the app allows now (see [watchingOrientation]). An iPhone's pages are laid
+     * A screen with room to turn: an iPad, or a folding iPhone opened out (its shorter side is
+     * iPad-sized). A phone-sized screen, folded or not, stays in portrait.
+     */
+    @MainActor static var roomy: Bool {
+        guard phone else { return true }
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return false }
+        let size = scene.screen.bounds.size
+        return min(size.width, size.height) >= 600
+    }
+
+    /**
+     * The orientations the app allows now (AppDelegate asks). A phone-sized screen's pages are laid
      * out for portrait: held sideways, the bars take most of the screen. Only the player turns.
      */
-    @MainActor static var orientations: UIInterfaceOrientationMask = UIDevice.current.userInterfaceIdiom == .phone ? .portrait : .all
+    @MainActor static var orientations: UIInterfaceOrientationMask {
+        roomy ? .all : watchingNow ? .landscape : .portrait
+    }
+
+    /** After folding or unfolding: asks iOS again what the app allows. */
+    @MainActor static func screenChanged() {
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
+        for window in scene.windows { window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations() }
+        if !roomy { scene.requestGeometryUpdate(.iOS(interfaceOrientations: orientations)) { _ in } }
+    }
     #endif
 
     /** Keeps the screen awake while something plays. */

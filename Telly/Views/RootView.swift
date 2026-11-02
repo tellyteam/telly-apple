@@ -29,7 +29,7 @@ struct RootView: View {
                 Wordmark(height: 62).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if app.provider == nil {
                 SetupView()
-            } else if compact {
+            } else if compact || Device.phone {
                 PhoneTabs()
             } else {
                 NavigationSplitView {
@@ -65,6 +65,9 @@ struct RootView: View {
                     }
                         .id(app.page)
                 }
+                #if DEBUG
+                .onAppear { if let p = DevHooks.env["TELLY_DEV_PAGE"].flatMap({ v in Page.allCases.first { $0.rawValue.lowercased() == v } }) { app.page = p } }
+                #endif
                 #if os(macOS)
                 // Under the player, the pages take no clicks, keys or focus: AppKit-backed lists
                 // would otherwise catch them before the player does.
@@ -78,6 +81,8 @@ struct RootView: View {
         .background(Theme.background)
         .background { if app.provider != nil { ArtKeeper() } }
         #if os(iOS)
+        // Folding or unfolding an iPhone changes the width: portrait-only, or free to turn.
+        .onChange(of: compact) { Device.screenChanged() }
         .fullScreenCover(item: $app.player) { request in
             PlayerView(request: request).environment(app)
         }
@@ -150,7 +155,8 @@ struct RootView: View {
 }
 
 /**
- * A narrow width (iPhone, or an iPad in a narrow Split View): a tab bar instead of the sidebar, five
+ * Every iPhone, opened out or not, and an iPad in a narrow Split View: a tab bar instead of the
+ * sidebar (on a folding iPhone opened out, a sidebar left too little room beside a page), five
  * tabs on every iOS: Live TV, Films and Series share Browse, My List and Downloads share Library.
  */
 private struct PhoneTabs: View {

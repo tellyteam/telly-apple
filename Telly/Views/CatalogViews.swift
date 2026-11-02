@@ -7,6 +7,11 @@ private struct CatalogLayout<Item: CatalogueItem, Card: View>: View {
     let loading: Bool
     @ViewBuilder let card: (Item) -> Card
     @Environment(\.compactWidth) private var compact
+    /**
+     * An iPhone's page too narrow for a column of categories beside the list: they're a menu
+     * instead. (Not on iPad: switching while it turns upsets the sidebar's layout.)
+     */
+    @State private var narrow = false
     @State private var group: String?
     @State private var filter = ""
     /** What the filter matched, worked out off the main thread; nil while there's no filter. */
@@ -18,7 +23,7 @@ private struct CatalogLayout<Item: CatalogueItem, Card: View>: View {
         let groups = catalogue?.groups
         HStack(spacing: 0) {
             // At a narrow width the categories are a menu in the bar instead (see groupMenu).
-            if !compact { categories; Divider() }
+            if !(compact || narrow) { categories; Divider() }
             if groups == nil {
                 Message(title: loading ? "Loading…" : "Nothing here yet")
             } else {
@@ -28,7 +33,8 @@ private struct CatalogLayout<Item: CatalogueItem, Card: View>: View {
         }
         .navigationTitle(group == Self.all || group == nil ? title : group!)
         .inlineTitle()
-        .toolbar { if compact, let groups, !groups.isEmpty { ToolbarItem(placement: .primaryAction) { groupMenu(groups) } } }
+        .onGeometryChange(for: Bool.self) { $0.size.width < 720 } action: { narrow = $0 && Device.phone }
+        .toolbar { if compact || narrow, let groups, !groups.isEmpty { ToolbarItem(placement: .primaryAction) { groupMenu(groups) } } }
         // All, so the filter searches everything from the start.
         .onAppear { if group == nil { group = Self.all } }
         .task(id: FilterKey(text: filter, group: group, list: catalogue?.version)) { await runFilter() }

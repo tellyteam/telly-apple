@@ -4,6 +4,11 @@ import SwiftUI
 struct LiveView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.compactWidth) private var compact
+    /**
+     * An iPhone's page too narrow for a column of categories beside the list: they're a menu
+     * instead. (Not on iPad: switching while it turns upsets the sidebar's layout.)
+     */
+    @State private var narrow = false
     @State private var group: String?
     @State private var filter = ""
     /** What the filter matched, worked out off the main thread; nil while there's no filter. */
@@ -13,7 +18,7 @@ struct LiveView: View {
         let groups = app.live ?? []
         HStack(spacing: 0) {
             // At a narrow width the categories are a menu in the bar instead.
-            if !compact { categories(groups); Divider() }
+            if !(compact || narrow) { categories(groups); Divider() }
             let channels = matches ?? inGroup
             if app.live == nil {
                 Message(title: app.refreshing ? "Loading channels…" : "No channels yet", detail: app.loadError)
@@ -33,7 +38,8 @@ struct LiveView: View {
         }
         .navigationTitle(group == Self.favourites ? "Favourites" : group == Self.all ? "All channels" : group ?? "Live TV")
         .inlineTitle()
-        .toolbar { if compact, !groups.isEmpty { ToolbarItem(placement: .primaryAction) { groupMenu(groups) } } }
+        .onGeometryChange(for: Bool.self) { $0.size.width < 720 } action: { narrow = $0 && Device.phone }
+        .toolbar { if compact || narrow, !groups.isEmpty { ToolbarItem(placement: .primaryAction) { groupMenu(groups) } } }
         // All, so the filter searches every channel from the start.
         .onAppear { if group == nil { group = Self.all } }
         .task(id: FilterKey(text: filter, group: group, list: app.liveCatalogue?.version, favourites: app.favourites.count)) { await runFilter() }
