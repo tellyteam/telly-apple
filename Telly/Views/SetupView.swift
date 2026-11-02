@@ -54,12 +54,7 @@ struct SetupView: View {
                 } else {
                     field("Playlist URL", $url, placeholder: "https://…/playlist.m3u", url: true)
                 }
-                Toggle(isOn: $allowCleartext) {
-                    VStack(alignment: .leading) {
-                        Text("Allow plain HTTP")
-                        Text("Only if your provider has no HTTPS. Traffic to it won't be encrypted.").font(.caption).foregroundStyle(Theme.muted)
-                    }
-                }
+                PlainHTTPToggle(title: "Allow plain HTTP", isOn: $allowCleartext)
                 if let error { Text(error).foregroundStyle(.orange).font(.callout) }
                 HStack {
                     Button(connecting ? "Connecting…" : "Connect") { Task { await connect() } }
@@ -132,5 +127,36 @@ struct SetupView: View {
             self.error = error.localizedDescription
         }
         connecting = false
+    }
+}
+
+/**
+ * The "Allow plain HTTP" switch, on the sign-in form and in Settings. Turning it on asks first, and
+ * while it's on an orange note says what that exposes.
+ */
+struct PlainHTTPToggle: View {
+    let title: String
+    @Binding var isOn: Bool
+    @State private var confirm = false
+
+    var body: some View {
+        Toggle(isOn: Binding(get: { isOn }, set: { if $0 { confirm = true } else { isOn = false } })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if isOn {
+                    Text("Not encrypted. Anyone on the same network, such as public Wi-Fi, or along the way to your provider can read your username, password and what you watch.")
+                        .font(.caption).foregroundStyle(.orange)
+                } else {
+                    Text("Only if your provider has no HTTPS. Your login and what you watch would be sent unencrypted.")
+                        .font(.caption).foregroundStyle(Theme.muted)
+                }
+            }
+        }
+        .alert("Send your login unencrypted?", isPresented: $confirm) {
+            Button("Allow plain HTTP", role: .destructive) { isOn = true }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("With plain HTTP, anyone on the same network, such as public Wi-Fi, or along the way to your provider can read your username, password and what you watch. Only allow it if your provider has no HTTPS.")
+        }
     }
 }

@@ -52,12 +52,7 @@ struct SettingsView: View {
             }
             if let p = app.provider {
                 SwiftUI.Section(p.name) {
-                    Toggle(isOn: Binding(get: { p.allowCleartext }, set: { app.setAllowCleartext($0) })) {
-                        VStack(alignment: .leading) {
-                            Text("Allow plain HTTP for this provider")
-                            Text("Only if it has no HTTPS. Traffic to it won't be encrypted.").font(.caption).foregroundStyle(Theme.muted)
-                        }
-                    }
+                    PlainHTTPToggle(title: "Allow plain HTTP for this provider", isOn: Binding(get: { p.allowCleartext }, set: { app.setAllowCleartext($0) }))
                     Button("Remove provider", role: .destructive) { confirmRemove = true }
                 }
             }
@@ -161,7 +156,7 @@ private struct SyncSection: View {
                 Text("Provider logins are never shared: sign in on each device.").font(.caption).foregroundStyle(Theme.muted)
                 Button("Stop syncing on this \(Device.name)", role: .destructive) { confirmStop = true }
             } else {
-                Text("Pick up where you left off on your other devices. Shares progress, Continue watching and My List, end-to-end encrypted. Provider logins are never shared.")
+                Text("Pick up where you left off on your other devices. Shares progress, Continue watching and My List, end-to-end encrypted. Provider logins are never shared, and the relay keeps no logs.")
                     .font(.callout).foregroundStyle(Theme.muted)
                 Button(linking && !joining ? "Starting…" : "Start syncing") { link(nil) }.disabled(linking)
                 #if os(iOS)
@@ -181,8 +176,11 @@ private struct SyncSection: View {
         } header: {
             Text("Sync")
         } footer: {
-            if app.sync != nil { Text("Scan the QR code with an iPhone or iPad's camera, or enter the code in Settings → Sync on your other devices. Keep it private: anyone with it can see what you've watched.") }
-            else { Text("Scan the QR code your Fire TV or Mac shows under Settings → Sync → Show code.") }
+            VStack(alignment: .leading, spacing: 6) {
+                if app.sync != nil { Text("Scan the QR code with an iPhone or iPad's camera, or enter the code in Settings → Sync on your other devices. Keep it private: anyone with it can see what you've watched.") }
+                else { Text("Scan the QR code your Fire TV or Mac shows under Settings → Sync → Show code.") }
+                Link("The relay keeps no logs. Read its policy", destination: URL(string: "https://github.com/tellyteam/telly-sync/blob/main/PRIVACY.md")!)
+            }
         }
         .qrScanner(isPresented: $scanning) { text in
             if let found = SyncLink.parse(text) {
