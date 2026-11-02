@@ -99,6 +99,8 @@ struct RootView: View {
             Button("Link") {
                 // Taken now: closing the alert clears the pending link before the task runs.
                 guard let link = app.pendingLink else { return }
+                // Sync is part of telly Plus: the code can be scanned again once it's on.
+                guard Plus.shared.unlocked else { Plus.shared.offered = true; return }
                 Task {
                     do { try await app.confirmLink(link) } catch { linkError = error.localizedDescription }
                 }
@@ -112,6 +114,9 @@ struct RootView: View {
         .alert("Couldn't link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(linkError ?? "") }
+        .sheet(isPresented: Binding(get: { Plus.shared.offered }, set: { Plus.shared.offered = $0 })) { PlusOfferView() }
+        // telly Plus starting (bought, restored, renewed): a linked device catches up straight away.
+        .onChange(of: Plus.shared.unlocked) { _, on in if on { Task { await app.syncNow(force: true) } } }
     }
 
     /** Which provider is in use, and a quick switch to another. */
@@ -136,7 +141,7 @@ struct RootView: View {
     /** Films and Series only for Xtream providers; M3U playlists are live channels only. */
     private var sections: [Page] {
         // Films and series (and so downloads) only come from Xtream providers.
-        let pages = Downloads.available ? Page.allCases : Page.allCases.filter { $0 != .downloads }
+        let pages = app.downloadsShown ? Page.allCases : Page.allCases.filter { $0 != .downloads }
         return app.provider?.isXtream == true ? pages : pages.filter { $0 != .films && $0 != .series && $0 != .downloads }
     }
 
@@ -266,7 +271,7 @@ struct LibraryView: View {
     @Binding var choice: Page
 
     var body: some View {
-        let choices: [(Page, String)] = Downloads.available && app.provider?.isXtream == true
+        let choices: [(Page, String)] = app.downloadsShown
             ? [(.myList, "My List"), (.downloads, "Downloads")] : [(.myList, "My List")]
         Switched(label: "Library", choices: choices, choice: $choice) { page in
             if page == .downloads { DownloadsView() } else { MyListView() }

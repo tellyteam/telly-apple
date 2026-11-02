@@ -17,9 +17,6 @@ struct SettingsView: View {
     @State private var confirmRemove = false
     @State private var confirmClearProgress = false
     @State private var clearing = false
-    @State private var versionTaps = 0
-    @State private var lastTap = Date.distantPast
-    @State private var note: String?
 
     var body: some View {
         @Bindable var app = app
@@ -60,8 +57,9 @@ struct SettingsView: View {
                 Toggle("Play the next episode automatically", isOn: $app.settings.autoNext)
                     .onChange(of: app.settings.autoNext) { app.saveSettings() }
             }
-            if app.provider?.isXtream == true && Downloads.available { DownloadSettingsSection() }
-            if app.syncShown { SyncSection() }
+            if !Plus.included { PlusSection() }
+            if app.provider?.isXtream == true && Downloads.available && Plus.shared.unlocked { DownloadSettingsSection() }
+            SyncSection()
             SwiftUI.Section {
                 Button(app.refreshing ? "Refreshing…" : "Refresh lists") { Task { await app.refresh() } }.disabled(app.refreshing)
                 Button(clearing ? "Clearing…" : "Clear saved lists") {
@@ -75,19 +73,14 @@ struct SettingsView: View {
                 Text("Lists were updated \(ago(app.listsUpdatedAt)). Clearing saved lists downloads them again; your login, My List and progress are kept. Clearing watch progress forgets where you got to and empties Continue watching\(app.sync != nil ? ", on your linked devices too" : ""); My List is kept.")
             }
             SwiftUI.Section {
-                HStack {
-                    Text("telly \(app.version)")
-                    if let note { Text("· \(note)").foregroundStyle(Theme.muted) }
-                }
-                .contentShape(Rectangle())
-                .onTapGesture(perform: tapVersion)
+                Text("telly \(app.version)")
                 #if os(macOS)
                 Button("Check for Updates…") { Updates.check() }
                 #endif
             } header: {
                 Text("About")
             } footer: {
-                Text("telly is free for personal use (PolyForm Noncommercial licence). It plays your own IPTV subscription and talks only to your provider\(Device.name == "Mac" ? ", and to GitHub once a day to check for updates" : "")\(app.syncShown ? ", and to the sync relay if you turn on sync" : ""). No accounts, analytics or tracking. Plays MKV and other formats with VLCKit (LGPL).")
+                Text("telly is free for personal use (PolyForm Noncommercial licence). It plays your own IPTV subscription and talks only to your provider\(Device.name == "Mac" ? ", and to GitHub once a day to check for updates" : "")\(Plus.included ? "" : ", to the App Store for telly Plus"), and to the sync relay if you turn on sync. No accounts, analytics or tracking. Plays MKV and other formats with VLCKit (LGPL).")
             }
         }
         // Rounded groups, as on iPad and in the Mac's System Settings (a Mac's default puts labels in a column).
@@ -106,20 +99,6 @@ struct SettingsView: View {
             Button("Clear it all", role: .destructive) { app.clearProgress() }
         } message: { Text("Forgets where you got to in every film and episode, and empties Continue watching. My List is kept.") }
     }
-
-    /** Seven taps in a row on the version show (or hide) the Sync section. */
-    private func tapVersion() {
-        let now = Date()
-        versionTaps = now.timeIntervalSince(lastTap) < 3 ? versionTaps + 1 : 1
-        lastTap = now
-        guard versionTaps >= 7 else { return }
-        versionTaps = 0
-        note = app.toggleSyncUnlocked() ? "Sync is now in Settings" : "Sync hidden"
-        Task {
-            try? await Task.sleep(for: .seconds(3))
-            note = nil
-        }
-    }
 }
 
 private struct SyncSection: View {
@@ -135,7 +114,15 @@ private struct SyncSection: View {
 
     var body: some View {
         SwiftUI.Section {
-            if let config = app.sync {
+            if !Plus.shared.unlocked {
+                // Sync is part of telly Plus. A linked device keeps its link while it's off.
+                Text(app.sync != nil
+                     ? "Sync is paused: it's part of telly Plus. This \(Device.name) stays linked, and picks up again with telly Plus."
+                     : "Pick up where you left off on your other devices, with telly Plus. Shares progress, Continue watching and My List, end-to-end encrypted.")
+                    .font(.callout).foregroundStyle(Theme.muted)
+                Button("See telly Plus") { Plus.shared.offered = true }
+                if app.sync != nil { Button("Stop syncing on this \(Device.name)", role: .destructive) { confirmStop = true } }
+            } else if let config = app.sync {
                 LabeledContent("Keeping your place in sync", value: app.syncBusy ? "Syncing now…" : "Last synced \(ago(app.syncedAt))")
                 if let e = app.syncError { Text(e).foregroundStyle(.orange).font(.callout) }
                 Button(showCode ? "Hide code" : "Show code to link another device") { showCode.toggle() }
@@ -178,7 +165,7 @@ private struct SyncSection: View {
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 if app.sync != nil { Text("Scan the QR code with an iPhone or iPad's camera, or enter the code in Settings → Sync on your other devices. Keep it private: anyone with it can see what you've watched.") }
-                else { Text("Scan the QR code your Fire TV or Mac shows under Settings → Sync → Show code.") }
+                else if Plus.shared.unlocked { Text("Scan the QR code your Fire TV or Mac shows under Settings → Sync → Show code.") }
                 Link("The relay keeps no logs. Read its policy", destination: URL(string: "https://github.com/tellyteam/telly-sync/blob/main/PRIVACY.md")!)
             }
         }

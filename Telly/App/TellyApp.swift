@@ -19,6 +19,8 @@ struct TellyApp: App {
         #endif
         // Downloads start with the app, so ones the system kept going reconnect.
         _ = Downloads.shared
+        // Whether telly Plus is on: what StoreKit holds, then its changes.
+        Plus.shared.start()
     }
 
     var body: some Scene {
@@ -64,7 +66,7 @@ struct TellyCommands: Commands {
                 Button("Series") { go(.series) }.keyboardShortcut("4")
             }
             Button("My List") { go(.myList) }.keyboardShortcut("5")
-            if model.provider?.isXtream == true && Downloads.available {
+            if model.downloadsShown {
                 Button("Downloads") { go(.downloads) }.keyboardShortcut("6")
             }
             Divider()

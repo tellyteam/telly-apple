@@ -28,6 +28,7 @@ final class Downloads {
     func add(providerId: String, _ c: Channel, kind: DownloadItem.Kind, show: String? = nil, seriesId: String? = nil, art: String? = nil) {}
     func removeAll(providerId: String) {}
     func removeWatched(_ providerId: String?, playing: String? = nil, watched: (String) -> Bool) {}
+    func plusChanged() {}
 }
 
 struct DownloadButton: View {

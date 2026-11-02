@@ -21,8 +21,6 @@ struct Settings: Codable, Equatable {
 struct Meta: Codable, Equatable {
     /** When each saved provider's lists were last fetched, by [SavedProvider.id]. */
     var listsUpdated: [String: Double]?
-    /** Sync is hidden until unlocked (seven taps on the version in Settings). */
-    var syncUnlocked: Bool?
     /** The saved provider in use ([SavedProvider.id]). */
     var activeProvider: String?
 
@@ -723,17 +721,15 @@ final class AppModel {
         play(PlayRequest(heading: s.name, live: false, items: episodes, index: index, seriesId: s.id, art: s.cover, startAt: fromStart ? 0 : nil))
     }
 
-    // MARK: Sync
-
-    /** Sync is a hidden feature for now: Settings shows it once unlocked, or while this iPad is linked. */
-    var syncShown: Bool { meta.syncUnlocked == true || sync != nil }
-
-    /** Shows or hides Settings → Sync; returns whether it's now shown. Hiding never unlinks. */
-    func toggleSyncUnlocked() -> Bool {
-        meta.syncUnlocked = !syncShown || sync != nil
-        meta.save()
-        return syncShown
+    /**
+     * Downloads, as a page: with telly Plus, for an Xtream provider. Without it, only while some are
+     * saved, so they can still be watched and deleted.
+     */
+    var downloadsShown: Bool {
+        Downloads.available && provider?.isXtream == true && (Plus.shared.unlocked || !Downloads.shared.items(for: activeId).isEmpty)
     }
+
+    // MARK: Sync
 
     /** A `telly://sync` link (from the Camera app or the in-app scanner): asks before linking. */
     func open(_ url: URL) {
@@ -742,16 +738,15 @@ final class AppModel {
         pendingLink = PendingLink(code: code)
     }
 
-    /** Links with a confirmed QR code; scanning one also shows Settings → Sync from then on. */
+    /** Links with a confirmed QR code. */
     func confirmLink(_ link: PendingLink) async throws {
         if pendingLink == link { pendingLink = nil }
-        meta.syncUnlocked = true
-        meta.save()
         try await startSync(code: link.code)
     }
 
     /** Starts a new household with a fresh code, or joins one with [code]. Throws a readable error. */
     func startSync(code: String?) async throws {
+        guard Plus.shared.unlocked else { throw SyncError(message: "Sync is part of telly Plus.") }
         guard let normal = code.map(SyncCrypto.normaliseCode) ?? SyncCrypto.newCode() else {
             throw SyncError(message: "That code isn't right: it's 16 letters and numbers, like ABCD-EFGH-JKMN-PQRS.")
         }
@@ -802,7 +797,8 @@ final class AppModel {
      * when they're next in use (resolving it needs their lists). Never during playback.
      */
     func syncNow(force: Bool = false) async {
-        guard let config = sync, !syncBusy, player == nil else { return }
+        // Without telly Plus a linked device keeps its link and its copy, and waits for it to come back.
+        guard let config = sync, Plus.shared.unlocked, !syncBusy, player == nil else { return }
         // Without a provider there's nothing to sync.
         guard activeId != nil else { return }
         if !force, let at = syncedAt, nowMs() - at < Self.syncGapMs { return }

@@ -87,7 +87,7 @@ struct HomeView: View {
             if shortcuts {
                 HStack(spacing: 10) {
                     RefreshIcon()
-                    if Downloads.available && app.provider?.isXtream == true { DownloadsIcon() }
+                    if app.downloadsShown { DownloadsIcon() }
                 }
                 .padding(.top, 10)
                 .padding(.trailing, pageInset(compact))
