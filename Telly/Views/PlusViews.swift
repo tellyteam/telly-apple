@@ -10,7 +10,10 @@ struct PlusSection: View {
 
     var body: some View {
         SwiftUI.Section {
-            if Plus.shared.unlocked {
+            if Plus.shared.unlocked && !Plus.shared.bought {
+                // Bought by the sync household elsewhere: on a TV, or another Apple Account.
+                LabeledContent("telly Plus", value: "On, with your household")
+            } else if Plus.shared.unlocked {
                 LabeledContent("telly Plus", value: "On")
                 #if os(iOS)
                 Button("Manage subscription") { managing = true }
@@ -29,9 +32,11 @@ struct PlusSection: View {
         } header: {
             Text("telly Plus")
         } footer: {
-            Text(Plus.shared.unlocked
-                 ? "Sync and Downloads are on, for everyone in your Family Sharing group."
-                 : "A yearly subscription through the App Store. One covers your Family Sharing group. Everything else in telly stays free.")
+            Text(!Plus.shared.unlocked
+                 ? "A yearly subscription through the App Store. One covers your Family Sharing group, and every device you sync. Everything else in telly stays free."
+                 : Plus.shared.bought
+                 ? "Sync and Downloads are on, for everyone in your Family Sharing group and every device you sync."
+                 : "Sync and Downloads are on: your sync household has telly Plus.")
         }
         #if os(iOS)
         .manageSubscriptionsSheet(isPresented: $managing)

@@ -748,11 +748,13 @@ final class AppModel {
 
     /** Starts a new household with a fresh code, or joins one with [code]. Throws a readable error. */
     func startSync(code: String?) async throws {
-        guard Plus.shared.unlocked else { throw SyncError(message: "Sync is part of telly Plus.") }
         guard let normal = code.map(SyncCrypto.normaliseCode) ?? SyncCrypto.newCode() else {
             throw SyncError(message: "That code isn't right: it's 16 letters and numbers, like ABCD-EFGH-JKMN-PQRS.")
         }
         let config = SyncConfig(code: normal, device: sync?.device ?? SyncCrypto.newDeviceId(), relay: Self.relay)
+        // Joining a household that has telly Plus (bought on a TV, say) opens it here too.
+        if !Plus.shared.unlocked, code != nil { await checkHouseholdPlus(config) }
+        guard Plus.shared.unlocked else { throw SyncError(message: "Sync is part of telly Plus.") }
         Keychain.set("sync", String(decoding: try JSONEncoder().encode(config), as: UTF8.self))
         sync = config
         syncedAt = nil
@@ -772,6 +774,7 @@ final class AppModel {
         sync = nil
         syncError = nil
         syncedAt = nil
+        Plus.shared.setHousehold(until: nil)
         try? await SyncClient.leave(config.relay, SyncCrypto.deriveKeys(config.code), device: config.device)
     }
 
@@ -800,11 +803,14 @@ final class AppModel {
      * when they're next in use (resolving it needs their lists). Never during playback.
      */
     func syncNow(force: Bool = false) async {
-        // Without telly Plus a linked device keeps its link and its copy, and waits for it to come back.
-        guard let config = sync, Plus.shared.unlocked, !syncBusy, player == nil else { return }
+        guard let config = sync, !syncBusy, player == nil else { return }
         // Without a provider there's nothing to sync.
         guard activeId != nil else { return }
         if !force, let at = syncedAt, nowMs() - at < Self.syncGapMs { return }
+        // Without telly Plus a linked device keeps its link and its copy, and waits for it to come
+        // back: bought here, or by the household elsewhere (the relay says).
+        if !Plus.shared.unlocked { await checkHouseholdPlus(config) }
+        guard Plus.shared.unlocked else { return }
         syncBusy = true
         syncError = nil
         defer { syncBusy = false }
@@ -851,9 +857,15 @@ final class AppModel {
                 if !changed.isEmpty { Task { await self.checkForNewEpisodes(only: changed) } }
             }
             syncedAt = nowMs()
+            await checkHouseholdPlus(config)
         } catch {
             syncError = (error as? SyncError)?.message ?? "Couldn't reach the sync relay."
         }
+    }
+
+    /** Asks the relay about the household's telly Plus. A failure leaves what's known. */
+    private func checkHouseholdPlus(_ config: SyncConfig) async {
+        do { Plus.shared.setHousehold(until: try await SyncClient.plus(config.relay, SyncCrypto.deriveKeys(config.code))) } catch {}
     }
 
     /**

@@ -21,8 +21,15 @@ final class Plus {
     static let included = false
     #endif
 
-    /** Sync and Downloads are open. */
+    /** Sync and Downloads are open: bought here (or by the family), or by the sync household elsewhere. */
     private(set) var unlocked: Bool
+    /** Bought through this Apple Account or its Family Sharing group. */
+    private(set) var bought: Bool
+    /**
+     * The last day the sync household has telly Plus for, as the relay says: bought on a TV (Paddle)
+     * or another Apple Account. Days since 1970, like the relay's. Nil when there's none.
+     */
+    @ObservationIgnored private var householdUntil: Int?
     /** Set while telly Plus is offered: from Settings, or a locked Sync or Download button. */
     var offered = false
     /**
@@ -33,9 +40,20 @@ final class Plus {
 
     @ObservationIgnored private var updates: Task<Void, Never>?
     private static let savedKey = "plus.unlocked"
+    private static let householdKey = "plus.household"
 
     private init() {
-        unlocked = Self.included || UserDefaults.standard.bool(forKey: Self.savedKey)
+        bought = UserDefaults.standard.bool(forKey: Self.savedKey)
+        householdUntil = UserDefaults.standard.object(forKey: Self.householdKey) as? Int
+        unlocked = false
+        unlocked = current()
+    }
+
+    /** What the relay says about the household's telly Plus (nil: none, or no household any more). */
+    func setHousehold(until day: Int?) {
+        householdUntil = day
+        UserDefaults.standard.set(day, forKey: Self.householdKey)
+        update()
     }
 
     /** At launch: reads what's owned, then follows renewals, refunds and Family Sharing changes. */
@@ -75,9 +93,19 @@ final class Plus {
     }
 
     private func set(_ on: Bool) {
+        bought = on
+        UserDefaults.standard.set(on, forKey: Self.savedKey)
+        update()
+    }
+
+    private func current() -> Bool {
+        Self.included || bought || (householdUntil.map { $0 >= Int(Date().timeIntervalSince1970 / 86_400) } ?? false)
+    }
+
+    private func update() {
+        let on = current()
         guard on != unlocked else { return }
         unlocked = on
-        UserDefaults.standard.set(on, forKey: Self.savedKey)
         Downloads.shared.plusChanged()
     }
 
