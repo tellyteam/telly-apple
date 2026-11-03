@@ -51,6 +51,39 @@ final class SecurityTests: XCTestCase {
     }
 }
 
+/** Saved files go into backups; the Keychain's copy of the login doesn't, so neither may they. */
+final class LoginMaskTests: XCTestCase {
+    private let saved = SavedProvider(id: "t1", provider: .xtream(name: "Test", server: "http://p.example", username: "alice",
+                                                                 password: "s3cret&!", allowCleartext: true))
+    private var url: String { Xtream.streamURL(URL(string: "http://p.example/")!, "movie", "alice", "s3cret&!", "42", "mkv") }
+    private var file: URL { Device.dataDirectory.appendingPathComponent("store/login-mask-test.json") }
+
+    override func setUp() { LoginMask.set([saved]) }
+    override func tearDown() { Store.delete("login-mask-test") }
+
+    private func raw() throws -> String { String(decoding: try Data(contentsOf: file), as: UTF8.self) }
+
+    func testSavedFilesKeepNoLoginAndReadBackWhole() throws {
+        Store.write("login-mask-test", [url])
+        XCTAssertFalse(try raw().contains("s3cret"))
+        XCTAssertFalse(try raw().contains("alice"))
+        XCTAssertEqual(Store.read("login-mask-test", as: [String].self), [url])
+    }
+
+    func testAFileSavedWithTheLoginLosesItOnceRead() throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode([url]).write(to: file)
+        XCTAssertTrue(try raw().contains("alice"))
+        XCTAssertEqual(Store.read("login-mask-test", as: [String].self), [url])
+        XCTAssertFalse(try raw().contains("alice"))
+    }
+
+    func testAnM3ULinksLoginIsKeptOutToo() {
+        let m3u = SavedProvider(id: "m1", provider: .m3u(name: "P", url: "http://p.example/get.php?username=bob&password=pw9&type=m3u_plus", allowCleartext: true))
+        XCTAssertEqual(LoginMask.logins([m3u]), ["m1": "bob/pw9"])
+    }
+}
+
 /** https answers with a redirect to http, which answers "plain". */
 private final class RedirectStub: URLProtocol {
     nonisolated(unsafe) static var plainRequested = false

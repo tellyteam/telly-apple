@@ -33,22 +33,40 @@ enum Keychain {
     }
 }
 
-/** The app's own records (progress, history, My List…) as JSON files, with complete file protection. */
+/**
+ * The app's own records (progress, history, My List…) as JSON files, with complete file protection.
+ * They go into backups, so provider logins are kept out of them (LoginMask).
+ */
 enum Store {
     private static var dir: URL {
         Device.dataDirectory.appendingPathComponent("store", isDirectory: true)
     }
 
     static func read<T: Decodable>(_ name: String, as type: T.Type) -> T? {
-        guard let data = try? Data(contentsOf: dir.appendingPathComponent("\(name).json")) else { return nil }
-        return try? JSONDecoder().decode(T.self, from: data)
+        let file = dir.appendingPathComponent("\(name).json")
+        guard let data = try? Data(contentsOf: file) else { return nil }
+        // Saved before logins were kept out: saved again without them.
+        let hidden = LoginMask.hide(data)
+        if hidden != data { rewrite(file, hidden) }
+        return try? JSONDecoder().decode(T.self, from: LoginMask.show(hidden))
+    }
+
+    /** [file] replaced by [data], keeping its file protection. */
+    private static func rewrite(_ file: URL, _ data: Data) {
+        #if os(iOS)
+        let protection = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.protectionKey]
+        #endif
+        try? data.write(to: file, options: .atomic)
+        #if os(iOS)
+        if let protection { try? FileManager.default.setAttributes([.protectionKey: protection], ofItemAtPath: file.path) }
+        #endif
     }
 
     /** [protection] is complete unless the file is needed while the iPad is locked. */
     static func write<T: Encodable>(_ name: String, _ value: T, protection: Data.WritingOptions = Device.fileProtection) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         guard let data = try? JSONEncoder().encode(value) else { return }
-        try? data.write(to: dir.appendingPathComponent("\(name).json"), options: [.atomic, protection])
+        try? LoginMask.hide(data).write(to: dir.appendingPathComponent("\(name).json"), options: [.atomic, protection])
     }
 
     /** Whether [name] is there but can't be opened yet: a locked iPad, and a file with complete protection. */

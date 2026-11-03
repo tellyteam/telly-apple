@@ -71,7 +71,10 @@ final class AppModel {
     var ready = false
     /** Every provider added on this device; [provider] is the one in use. */
     var providers: [SavedProvider] = [] {
-        didSet { Downloads.shared.cleartextAllowed = Set(providers.filter(\.provider.allowCleartext).map(\.id)) }
+        didSet {
+            LoginMask.set(providers)
+            Downloads.shared.cleartextAllowed = Set(providers.filter(\.provider.allowCleartext).map(\.id))
+        }
     }
     var provider: Provider?
     /** The [SavedProvider.id] of [provider]. */

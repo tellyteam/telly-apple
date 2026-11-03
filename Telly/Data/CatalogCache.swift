@@ -39,7 +39,21 @@ enum CatalogCache {
     static func write(_ scope: String, _ name: String, _ data: Data, protection: Data.WritingOptions = Device.fileProtectionAfterFirstUnlock) {
         let url = file(scope, name)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        excludeFromBackup()
         try? data.write(to: url, options: [.atomic, protection])
+    }
+
+    /**
+     * Lists can be fetched again, and an M3U playlist's addresses may carry the login, so none of it
+     * goes into iCloud or computer backups. Once a run is enough.
+     */
+    nonisolated(unsafe) private static var excluded = false
+    private static func excludeFromBackup() {
+        guard !excluded else { return }
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var url = dir
+        excluded = (try? url.setResourceValues(values)) != nil
     }
 
     static func clearAll() {
