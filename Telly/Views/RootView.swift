@@ -107,9 +107,11 @@ struct RootView: View {
             }
             Button("Cancel", role: .cancel) { app.pendingLink = nil }
         } message: {
-            Text(app.sync == nil
-                 ? "Your progress, Continue watching and My List will be shared with the device that showed this code, end-to-end encrypted."
-                 : "This replaces the devices this \(Device.name) syncs with now.")
+            // The link may have come from a message or web page: whoever made it would see what's watched here.
+            Text((app.sync == nil
+                  ? "Your progress, Continue watching and My List will be shared with the device that showed this code, end-to-end encrypted."
+                  : "This replaces the devices this \(Device.name) syncs with now.")
+                 + " Only link if one of your own devices is showing this code.")
         }
         .alert("Couldn't link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
