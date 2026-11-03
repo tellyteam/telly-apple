@@ -140,6 +140,9 @@ private struct SyncSection: View {
                     }
                 }
                 Button(app.syncBusy ? "Syncing…" : "Sync now") { Task { await app.syncNow(force: true) } }.disabled(app.syncBusy)
+                #if os(iOS)
+                Button("Scan a new device's QR code") { scanning = true }
+                #endif
                 Text("Provider logins are never shared: sign in on each device.").font(.caption).foregroundStyle(Theme.muted)
                 Button("Stop syncing on this \(Device.name)", role: .destructive) { confirmStop = true }
             } else {
@@ -170,10 +173,13 @@ private struct SyncSection: View {
             }
         }
         .qrScanner(isPresented: $scanning) { text in
-            if let found = SyncLink.parse(text) {
+            if let join = SyncJoin.parse(text) {
+                // A new device's QR code: it's handed this household's code, after asking.
+                app.pendingJoin = join
+            } else if let found = SyncLink.parse(text) {
                 link(found)
             } else {
-                error = "That QR code isn't a telly sync code."
+                error = "That QR code isn't a telly one."
             }
         }
         .confirmationDialog("Stop syncing on this \(Device.name)?", isPresented: $confirmStop, titleVisibility: .visible) {

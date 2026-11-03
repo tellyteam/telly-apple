@@ -250,3 +250,24 @@ final class SyncCheckTests: XCTestCase {
         XCTAssertEqual(AppModel.seriesChanged(from: (new.progress, new.history, new.ledger.watched), to: new), [])
     }
 }
+
+final class SyncJoinTests: XCTestCase {
+    /** PROTOCOL.md's join box, sealed the same way on every device. */
+    func testMatchesTheSharedVector() throws {
+        let join = try XCTUnwrap(SyncJoin.parse("telly://join?id=00112233445566778899aabbccddeeff&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"))
+        XCTAssertEqual(join.key, Array(0..<32))
+        let box = try join.seal(code: "0123456789ABCDEF", nonce: Array(1...12))
+        XCTAssertEqual(SyncCrypto.hex(box), "010102030405060708090a0b0c7ec839ba88f1d2bc6e9252752327df1e757bd8bfd52e1480e77d847a23a8054b9746a38ee4fdc41370785a")
+        XCTAssertEqual(join.open(box), "0123456789ABCDEF")
+    }
+
+    func testOpensOnlyItsOwnBox() throws {
+        let join = SyncJoin.new()
+        let box = try join.seal(code: "0123456789ABCDEF")
+        XCTAssertNil(SyncJoin.new().open(box), "another device's key")
+        XCTAssertNil(SyncJoin(id: SyncJoin.new().id, key: join.key).open(box), "another box's id")
+        XCTAssertEqual(SyncJoin.parse(join.url), join)
+        XCTAssertNil(SyncJoin.parse("telly://sync?code=0123456789ABCDEF"))
+        XCTAssertNil(SyncJoin.parse("telly://join?id=00&key=AAEC"))
+    }
+}

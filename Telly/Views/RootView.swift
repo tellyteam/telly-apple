@@ -21,6 +21,7 @@ struct RootView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.compactWidth) private var compact
     @State private var linkError: String?
+    @State private var joined = false
 
     var body: some View {
         @Bindable var app = app
@@ -28,7 +29,7 @@ struct RootView: View {
             if !app.ready {
                 Wordmark(height: 62).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if app.provider == nil {
-                SetupView()
+                FirstRunView()
             } else if compact || Device.phone {
                 PhoneTabs()
             } else {
@@ -113,6 +114,26 @@ struct RootView: View {
                   : "This replaces the devices this \(Device.name) syncs with now.")
                  + " Only link if one of your own devices is showing this code.")
         }
+        .alert("Link your new device?", isPresented: Binding(get: { app.pendingJoin != nil }, set: { if !$0 { app.pendingJoin = nil } })) {
+            Button("Link") {
+                guard let join = app.pendingJoin else { return }
+                Task {
+                    do {
+                        try await app.sendJoin(join)
+                        joined = true
+                    } catch {
+                        // Without telly Plus the offer opens instead.
+                        if !Plus.shared.offered { linkError = error.localizedDescription }
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { app.pendingJoin = nil }
+        } message: {
+            Text("It will share progress, Continue watching and My List with this \(Device.name), end-to-end encrypted. Provider logins are never shared.")
+        }
+        .alert("Linked", isPresented: $joined) {
+            Button("OK", role: .cancel) {}
+        } message: { Text("Your new device is linked. It picks up where you left off once it's signed in to your provider.") }
         .alert("Couldn't link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(linkError ?? "") }

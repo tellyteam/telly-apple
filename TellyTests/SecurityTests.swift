@@ -3,6 +3,15 @@ import XCTest
 
 @MainActor
 final class SecurityTests: XCTestCase {
+    /** A join link hands over the household's code, so one from a message or web page is ignored. */
+    func testJoinLinksOnlyComeFromTheScanner() throws {
+        let app = AppModel()
+        app.open(try XCTUnwrap(URL(string: SyncJoin.new().url)))
+        XCTAssertNil(app.pendingJoin)
+        app.open(try XCTUnwrap(URL(string: SyncLink.url(code: "0123456789ABCDEF"))))
+        XCTAssertEqual(app.pendingLink?.code, "0123456789ABCDEF", "a sync link still asks first")
+    }
+
     /** An https address that redirects to plain HTTP isn't followed while plain HTTP is off. */
     func testRedirectToPlainHTTPIsRefused() async throws {
         let config = URLSessionConfiguration.ephemeral

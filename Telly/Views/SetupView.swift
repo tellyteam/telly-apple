@@ -8,6 +8,8 @@ struct SetupView: View {
     var existing: SavedProvider? = nil
     /** In a sheet (adding another provider, or editing), rather than the first screen. */
     var inSheet = false
+    /** On the first run, back to Welcome. */
+    var onBack: (() -> Void)? = nil
 
     @State private var xtream = true
     @State private var name = ""
@@ -24,7 +26,8 @@ struct SetupView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Wordmark(height: 42)
-                Text("Add your IPTV provider to start watching. telly doesn't come with any channels.")
+                if !inSheet { Text("Add your provider").font(.title.weight(.bold)) }
+                Text("Sign in with the details your TV provider gave you. telly doesn't come with any channels.")
                     .foregroundStyle(Theme.muted)
                 Picker("Type", selection: $xtream) {
                     Text("Xtream Codes").tag(true)
@@ -60,6 +63,7 @@ struct SetupView: View {
                     Button(connecting ? "Connecting…" : "Connect") { Task { await connect() } }
                         .buttonStyle(.borderedProminent).disabled(connecting || !complete)
                     if inSheet { Button("Cancel") { dismiss() }.buttonStyle(.bordered) }
+                    if let onBack { Button("Back", action: onBack).buttonStyle(.bordered) }
                 }
                 Text("Your login stays on this \(Device.name), in its Keychain. telly only talks to your provider.")
                     .font(.caption).foregroundStyle(Theme.faint)
@@ -80,8 +84,8 @@ struct SetupView: View {
     private var stillLinked: some View {
         VStack(alignment: .leading, spacing: 10) {
             Divider().padding(.vertical, 6)
-            Text("This \(Device.name) is still linked for sync").font(.headline)
-            Text("Add a provider to pick up where you left off on your other devices.")
+            Text("This \(Device.name) is linked with your other devices").font(.headline)
+            Text("Add your provider to pick up where you left off on them. Use the same one, signed in the same way.")
                 .font(.caption).foregroundStyle(Theme.muted)
             Button("Stop syncing on this \(Device.name)", role: .destructive) { Task { await app.stopSync() } }
                 .buttonStyle(.bordered)

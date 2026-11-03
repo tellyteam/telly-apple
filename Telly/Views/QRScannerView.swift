@@ -60,9 +60,15 @@ struct QRScannerView: View {
             private var done = false
             init(onFound: @escaping (String) -> Void) { self.onFound = onFound }
 
+            /** Another device's link code, or a new device's join code. */
+            static func isTelly(_ text: String) -> Bool {
+                let t = text.lowercased()
+                return t.hasPrefix("telly://sync") || t.hasPrefix("telly://join")
+            }
+
             func dataScanner(_ scanner: DataScannerViewController, didAdd added: [RecognizedItem], allItems: [RecognizedItem]) {
                 for item in added {
-                    guard !done, case let .barcode(code) = item, let text = code.payloadStringValue, text.lowercased().hasPrefix("telly://sync") else { continue }
+                    guard !done, case let .barcode(code) = item, let text = code.payloadStringValue, Self.isTelly(text) else { continue }
                     done = true
                     scanner.stopScanning()
                     onFound(text)

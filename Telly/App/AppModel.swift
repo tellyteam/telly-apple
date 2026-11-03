@@ -59,7 +59,12 @@ private func nowMs() -> Double { (Date().timeIntervalSince1970 * 1000).rounded()
 @Observable
 final class AppModel {
     /** telly's relay: sync always uses it (a link saved with another one is moved to it). */
+    #if DEBUG
+    /** In development, a local relay can stand in (`TELLY_RELAY=http://localhost:8787`). */
+    nonisolated static let relay = ProcessInfo.processInfo.environment["TELLY_RELAY"] ?? "https://telly-sync.tellyteam.workers.dev"
+    #else
     nonisolated static let relay = "https://telly-sync.tellyteam.workers.dev"
+    #endif
     /** Coming back to telly syncs at most this often. */
     private static let syncGapMs: Double = 60_000
 
@@ -99,6 +104,8 @@ final class AppModel {
     var sync: SyncConfig?
     /** A sync link opened from a QR code, waiting for the user to confirm. */
     var pendingLink: PendingLink?
+    /** A new device's join QR code, scanned here, waiting for the user to confirm. */
+    var pendingJoin: SyncJoin?
     var syncBusy = false
     var syncedAt: Double?
     var syncError: String?
@@ -735,7 +742,11 @@ final class AppModel {
 
     // MARK: Sync
 
-    /** A `telly://sync` link (from the Camera app or the in-app scanner): asks before linking. */
+    /**
+     * A `telly://sync` link from the Camera app: asks before linking. A `telly://join` link is
+     * ignored here: it hands over this household's code, and could come from a message or web page,
+     * so it's only taken from the in-app scanner (Settings → Sync).
+     */
     func open(_ url: URL) {
         guard let code = SyncLink.parse(url.absoluteString) else { return }
         if sync?.code == code { return }
@@ -746,6 +757,23 @@ final class AppModel {
     func confirmLink(_ link: PendingLink) async throws {
         if pendingLink == link { pendingLink = nil }
         try await startSync(code: link.code)
+    }
+
+    /**
+     * Links the new device whose join QR code was scanned: leaves this household's code for it.
+     * Not linked yet, this device starts a household first (that's telly Plus).
+     */
+    func sendJoin(_ join: SyncJoin) async throws {
+        if pendingJoin == join { pendingJoin = nil }
+        if sync == nil {
+            guard Plus.shared.unlocked else {
+                Plus.shared.offered = true
+                throw SyncError(message: "Sync is part of telly Plus.")
+            }
+            try await startSync(code: nil)
+        }
+        guard let config = sync else { return }
+        try await SyncClient.sendJoin(config.relay, join, code: config.code)
     }
 
     /** Starts a new household with a fresh code, or joins one with [code]. Throws a readable error. */
