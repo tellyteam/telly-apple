@@ -763,6 +763,8 @@ final class AppModel {
         if let error = syncError {
             Keychain.delete("sync")
             sync = nil
+            // Not in the household after all (it's full, say), so not its telly Plus either.
+            Plus.shared.setHousehold(until: nil)
             throw SyncError(message: error)
         }
     }
@@ -860,6 +862,8 @@ final class AppModel {
             await checkHouseholdPlus(config)
         } catch {
             syncError = (error as? SyncError)?.message ?? "Couldn't reach the sync relay."
+            // Turned away by the household (full, or gone): its telly Plus isn't this device's.
+            if (error as? SyncError)?.outside == true { Plus.shared.setHousehold(until: nil) }
         }
     }
 

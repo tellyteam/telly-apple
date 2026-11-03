@@ -2,6 +2,8 @@ import Foundation
 
 struct SyncError: LocalizedError {
     let message: String
+    /** The relay won't have this device in the household: the code's gone, or it's full. */
+    var outside = false
     var errorDescription: String? { message }
 }
 
@@ -30,9 +32,9 @@ enum SyncClient {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         switch status {
         case 200..<300: return data
-        case 401: throw SyncError(message: "This sync code is no longer valid on the relay.")
-        case 402: throw SyncError(message: "Sync needs telly Plus for this household.")
-        case 409: throw SyncError(message: "Too many devices are linked to this code (12 at most).")
+        case 401: throw SyncError(message: "This sync code is no longer valid on the relay.", outside: true)
+        case 402: throw SyncError(message: "Sync needs telly Plus for this household.", outside: true)
+        case 409: throw SyncError(message: "Too many devices are linked to this code (12 at most).", outside: true)
         default: throw SyncError(message: "The sync relay answered \(status).")
         }
     }
