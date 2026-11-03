@@ -1,6 +1,22 @@
 import XCTest
 @testable import Telly
 
+/** When telly Plus is offered: once, after the first proper watch; Home's reminder a few days on. */
+final class PlusOfferTests: XCTestCase {
+    func testOfferedOnceAfterAProperFirstWatch() {
+        XCTAssertFalse(Plus.offersAfter(seconds: 60, unlocked: false, offeredBefore: false), "a quick look round")
+        XCTAssertTrue(Plus.offersAfter(seconds: 5 * 60, unlocked: false, offeredBefore: false))
+        XCTAssertFalse(Plus.offersAfter(seconds: 3600, unlocked: false, offeredBefore: true), "Not now is for good")
+        XCTAssertFalse(Plus.offersAfter(seconds: 3600, unlocked: true, offeredBefore: false), "already has it")
+    }
+
+    func testTheReminderWaitsAFewDays() {
+        let offered = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertFalse(Plus.reminderDue(offeredAt: offered, now: offered.addingTimeInterval(2 * 86_400)))
+        XCTAssertTrue(Plus.reminderDue(offeredAt: offered, now: offered.addingTimeInterval(3 * 86_400)))
+    }
+}
+
 final class PlusTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private func owned(_ id: String = Plus.productId, expires: TimeInterval? = 86_400, revoked: Bool = false) -> Plus.Owned {

@@ -114,6 +114,8 @@ final class AppModel {
     @ObservationIgnored private var syncSoonTask: Task<Void, Never>?
     /** The signed telly Plus transaction the relay last accepted for this household. */
     @ObservationIgnored private var plusShown: String?
+    /** When the player opened, for telly Plus's offer after the first proper watch. */
+    @ObservationIgnored private var playingSince: Date?
 
     /** Waits until telly's files can be read (see [start]). Tests replace it. */
     @ObservationIgnored var untilUnlocked: () async -> Void = { await Device.untilUnlocked() }
@@ -553,6 +555,7 @@ final class AppModel {
     /** Continue watching follows once it has played long enough (the player calls [recordWatching]). */
     func play(_ req: PlayRequest) {
         Downloads.shared.watching = true
+        if player == nil { playingSince = Date() }
         player = req
     }
 
@@ -597,6 +600,8 @@ final class AppModel {
     /** Leaving the player shares what was watched, and looks for new episodes of anything finished. */
     func closePlayer() {
         player = nil
+        if let since = playingSince { Plus.shared.watched(seconds: Date().timeIntervalSince(since)) }
+        playingSince = nil
         clearWatchedDownloads()
         Downloads.shared.watching = false
         Task {

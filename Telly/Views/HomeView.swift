@@ -22,6 +22,11 @@ struct HomeView: View {
                     // Below Refresh and Downloads, when they're over the top.
                     .padding(.horizontal, pageInset(compact)).padding(.top, shortcuts ? 60 : 20)
                 }
+                if Plus.shared.reminderDue {
+                    PlusReminder().padding(.horizontal, pageInset(compact))
+                        // First on the page, it goes below Refresh and Downloads, as the welcome does.
+                        .padding(.top, shortcuts && hero == nil && !app.continueWatching.isEmpty ? 60 : 0)
+                }
                 if !app.continueWatching.isEmpty {
                     Shelf(title: "Continue watching") {
                         ForEach(app.continueWatching, id: \.slot) { h in ContinueCard(entry: h) }

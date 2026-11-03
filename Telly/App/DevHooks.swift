@@ -14,6 +14,7 @@ import SwiftUI
  * - `TELLY_DEV_LANDSCAPE=1`: turns an iPhone to landscape, as if held sideways.
  * - `TELLY_DEV_WATCH=film|series`: puts the newest film, or the newest series, in My List and
  *   watches it to the end (a series' last season), as if played through.
+ * - `TELLY_DEV_FIRST_WATCH=10`: seconds in the player that count as the first proper watch (5 minutes), after which telly Plus is offered.
  * - `TELLY_DEV_FIRST_RUN=join`: opens the first run's Join step (its QR link is printed to the console).
  * - `TELLY_RELAY=http://localhost:8787`: a local relay (`npm run dev` in telly-sync) in place of telly's.
  */

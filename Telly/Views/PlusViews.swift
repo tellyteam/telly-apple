@@ -44,7 +44,11 @@ struct PlusSection: View {
     }
 }
 
-/** telly Plus, offered: from Settings, or a locked Sync or Download button. The App Store's own sheet. */
+/**
+ * telly Plus, offered: once after the first proper watch, then from Settings, Home's reminder, or
+ * a locked Sync or Download button. The App Store's own sheet, which leads with the free trial
+ * while it's still to be had, its price beneath.
+ */
 struct PlusOfferView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -65,6 +69,8 @@ struct PlusOfferView: View {
             .frame(maxWidth: 520)
         }
         .storeButton(.visible, for: .restorePurchases)
+        // "Not now": telly Plus is offered after the first watch only once.
+        .storeButton(.visible, for: .cancellation)
         .subscriptionStorePolicyDestination(url: Plus.termsURL, for: .termsOfService)
         .subscriptionStorePolicyDestination(url: Plus.privacyURL, for: .privacyPolicy)
         .onInAppPurchaseCompletion { _, _ in
@@ -93,4 +99,25 @@ extension Plus {
     static let termsURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
     /** telly's privacy policy. To be written before telly Plus goes on sale (an App Store requirement). */
     static let privacyURL = URL(string: "https://github.com/tellyteam/telly-apple/blob/main/PRIVACY.md")!
+}
+
+/** Home's one reminder of telly Plus, a few days after it was first offered. Closing it is for good. */
+struct PlusReminder: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: "arrow.triangle.2.circlepath").font(.title2).foregroundStyle(Theme.accent).frame(width: 32)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Pick up where you left off on your other devices").font(.headline)
+                Text(Downloads.available ? "With telly Plus: Sync, and Downloads to watch without a connection." : "With telly Plus: Sync across your devices.")
+                    .font(.subheadline).foregroundStyle(Theme.muted)
+                Button("See telly Plus") { Plus.shared.offered = true }.buttonStyle(.borderedProminent)
+            }
+            Spacer(minLength: 0)
+            Button { Plus.shared.closeReminder() } label: { Image(systemName: "xmark") }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Close")
+        }
+        .padding(18)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+    }
 }

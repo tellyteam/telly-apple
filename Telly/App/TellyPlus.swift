@@ -38,13 +38,19 @@ final class Plus {
      */
     @ObservationIgnored private(set) var signedTransaction: String?
 
+    /** Home's one reminder, a few days after telly Plus was first offered, until it's closed. */
+    private(set) var reminderClosed: Bool
+
     @ObservationIgnored private var updates: Task<Void, Never>?
     private static let savedKey = "plus.unlocked"
     private static let householdKey = "plus.household"
+    private static let offeredAtKey = "plus.offeredAt"
+    private static let reminderClosedKey = "plus.reminderClosed"
 
     private init() {
         bought = UserDefaults.standard.bool(forKey: Self.savedKey)
         householdUntil = UserDefaults.standard.object(forKey: Self.householdKey) as? Int
+        reminderClosed = UserDefaults.standard.bool(forKey: Self.reminderClosedKey)
         unlocked = false
         unlocked = current()
     }
@@ -107,6 +113,51 @@ final class Plus {
         guard on != unlocked else { return }
         unlocked = on
         Downloads.shared.plusChanged()
+    }
+
+    // MARK: Offered after the first watch
+
+    /**
+     * Leaving the player after [seconds]: the first time that's a proper watch (five minutes or
+     * more), telly Plus is offered, once. After "Not now" it's only offered where it's needed: a
+     * locked Download or Sync, Settings, and Home's one reminder.
+     */
+    func watched(seconds: TimeInterval) {
+        let d = UserDefaults.standard
+        guard Self.offersAfter(seconds: seconds, unlocked: unlocked || Self.included, offeredBefore: d.object(forKey: Self.offeredAtKey) != nil) else { return }
+        d.set(Date().timeIntervalSince1970, forKey: Self.offeredAtKey)
+        // Once the player has gone: a sheet can't open while it's still closing.
+        Task {
+            try? await Task.sleep(for: .milliseconds(800))
+            offered = true
+        }
+    }
+
+    /** Home's reminder: shown from a few days after the first offer, until closed or telly Plus is on. */
+    var reminderDue: Bool {
+        guard !unlocked, !reminderClosed, let at = UserDefaults.standard.object(forKey: Self.offeredAtKey) as? Double else { return false }
+        return Self.reminderDue(offeredAt: Date(timeIntervalSince1970: at), now: Date())
+    }
+
+    func closeReminder() {
+        reminderClosed = true
+        UserDefaults.standard.set(true, forKey: Self.reminderClosedKey)
+    }
+
+    /** A proper first watch: long enough to have seen telly working, not a quick look round. */
+    #if DEBUG
+    nonisolated static let firstWatchSeconds: TimeInterval = ProcessInfo.processInfo.environment["TELLY_DEV_FIRST_WATCH"].flatMap(Double.init) ?? 5 * 60
+    #else
+    nonisolated static let firstWatchSeconds: TimeInterval = 5 * 60
+    #endif
+    nonisolated static let reminderDays = 3.0
+
+    nonisolated static func offersAfter(seconds: TimeInterval, unlocked: Bool, offeredBefore: Bool) -> Bool {
+        seconds >= firstWatchSeconds && !unlocked && !offeredBefore
+    }
+
+    nonisolated static func reminderDue(offeredAt: Date, now: Date) -> Bool {
+        now.timeIntervalSince(offeredAt) >= reminderDays * 86_400
     }
 
     // MARK: The rule
