@@ -177,7 +177,7 @@ private struct PhoneTabs: View {
     var body: some View {
         TabView(selection: $tab) {
             stack { home }
-                .environment(\.showDownloads) { library = .downloads; tab = .library }
+                .environment(\.showDownloads, ShowDownloads { library = .downloads; tab = .library })
                 .tabItem { Label("Home", systemImage: "house") }.tag(Tab.home)
             stack { BrowseView().refreshInBar() }
                 .tabItem { Label("Browse", systemImage: "tv") }.tag(Tab.browse)
@@ -218,7 +218,13 @@ private struct PhoneTabs: View {
 
 extension EnvironmentValues {
     /** Opens Downloads where it lives at a narrow width: in Library (for Home's Downloads icon). */
-    @Entry var showDownloads: (() -> Void)? = nil
+    @Entry var showDownloads: ShowDownloads? = nil
+}
+
+/** Wrapped, as @Entry asks of a closure. Its one reader is Home's Downloads button, so a redraw costs little either way. */
+struct ShowDownloads {
+    let action: () -> Void
+    func callAsFunction() { action() }
 }
 
 /** A tab's pages switched at the top, as one control in the bar; a single page shows on its own. */

@@ -13,7 +13,7 @@ import SwiftUI
 @Observable
 final class Plus {
     static let shared = Plus()
-    static let productId = "io.github.tellyteam.telly.plus.yearly"
+    nonisolated static let productId = "io.github.tellyteam.telly.plus.yearly"
     /** Where there's no App Store to buy it from yet: the Mac's own release has it included. */
     #if os(macOS) && PLUS
     static let included = true

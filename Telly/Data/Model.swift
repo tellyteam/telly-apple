@@ -56,7 +56,7 @@ enum Provider: Codable, Equatable {
 }
 
 /** Anything the player can play: a live channel, a film or a series episode. */
-struct Channel: Codable, Hashable, Identifiable {
+struct Channel: Codable, Hashable, Identifiable, Sendable {
     var id: String
     var name: String
     var group: String
@@ -72,7 +72,7 @@ struct Channel: Codable, Hashable, Identifiable {
     var runtime: String?
 }
 
-struct Series: Codable, Hashable, Identifiable {
+struct Series: Codable, Hashable, Identifiable, Sendable {
     var id: String
     var name: String
     var group: String

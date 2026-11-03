@@ -1,7 +1,7 @@
 import AVFoundation
 import Observation
 #if os(iOS)
-import MobileVLCKit
+@preconcurrency import MobileVLCKit
 import UIKit
 #else
 import AppKit
@@ -237,7 +237,7 @@ final class PlayerController {
         guard let vlc else { return }
         if vlc.state != lastState {
             lastState = vlc.state
-            log("VLC state \(VLCMediaPlayerStateToString(vlc.state) ?? "?") playing=\(vlc.isPlaying)")
+            log("VLC state \(VLCMediaPlayerStateToString(vlc.state)) playing=\(vlc.isPlaying)")
         }
         position = Double(vlc.time.intValue)
         duration = Double(vlc.media?.length.intValue ?? 0)
