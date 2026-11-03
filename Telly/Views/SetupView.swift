@@ -30,8 +30,8 @@ struct SetupView: View {
                 Text("Sign in with the details your TV provider gave you. telly doesn't come with any channels.")
                     .foregroundStyle(Theme.muted)
                 Picker("Type", selection: $xtream) {
-                    Text("Xtream Codes").tag(true)
-                    Text("M3U playlist").tag(false)
+                    Text("Username and password").tag(true)
+                    Text("Playlist link").tag(false)
                 }
                 .pickerStyle(.segmented)
                 field("Name (optional)", $name, placeholder: "Leave blank to use the server's name")

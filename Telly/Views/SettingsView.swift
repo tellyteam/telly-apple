@@ -28,7 +28,7 @@ struct SettingsView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(saved.provider.name)
-                                    Text(saved.provider.isXtream ? "Xtream Codes" : "M3U playlist").font(.caption).foregroundStyle(Theme.muted)
+                                    Text(saved.provider.isXtream ? "Username and password" : "Playlist link").font(.caption).foregroundStyle(Theme.muted)
                                 }
                                 Spacer()
                                 if saved.id == app.activeId { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
