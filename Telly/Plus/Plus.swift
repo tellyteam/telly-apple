@@ -18,6 +18,7 @@ final class Downloads {
     static let available = false
     static let sessionId = ""
     var watching = false
+    @ObservationIgnored var cleartextAllowed: Set<String> = []
     @ObservationIgnored var backgroundEventsDone: (() -> Void)?
 
     static func registerWake() {}
