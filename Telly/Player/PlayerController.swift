@@ -44,6 +44,7 @@ final class PlayerController {
     @ObservationIgnored private var vlc: VLCMediaPlayer?
     @ObservationIgnored private var ticker: Timer?
     @ObservationIgnored private var url: URL?
+    @ObservationIgnored private var allowCleartext = false
     @ObservationIgnored private var startMs: Double = 0
     @ObservationIgnored private var subtitlesSettled = false
     @ObservationIgnored private var endObserver: NSObjectProtocol?
@@ -72,10 +73,11 @@ final class PlayerController {
             return
         }
         url = u
+        self.allowCleartext = allowCleartext
         startMs = startAt
         let ext = u.pathExtension.lowercased()
         log("load .\(ext.isEmpty ? "(none)" : ext) from \(u.scheme ?? "?") start=\(Int(startAt / 1000))s")
-        if Self.logging { Task { await Self.probe(u) } }
+        if Self.logging { Task { await Self.probe(u, allowCleartext: allowCleartext) } }
         if ["m3u8", "mp4", "m4v", "mov", "mp3", "aac", "m4a"].contains(ext) { startApple() } else { startVLC() }
     }
 
@@ -291,7 +293,7 @@ final class PlayerController {
         explaining = true
         buffering = false
         Task {
-            let status = await Self.status(of: url)
+            let status = await Self.status(of: url, allowCleartext: allowCleartext)
             explaining = false
             guard self.url == url else { return }
             error = Self.explain(status)
@@ -300,11 +302,11 @@ final class PlayerController {
     }
 
     /** What the provider answers for [url] (the status only), or nil if it can't be reached. */
-    private static func status(of url: URL) async -> Int? {
+    private static func status(of url: URL, allowCleartext: Bool) async -> Int? {
         var r = URLRequest(url: url, timeoutInterval: 10)
         r.setValue("bytes=0-0", forHTTPHeaderField: "Range")
         r.setValue("\(Device.userAgent)/1", forHTTPHeaderField: "User-Agent")
-        return ((try? await URLSession.shared.data(for: r))?.1 as? HTTPURLResponse)?.statusCode
+        return ((try? await URLSession.shared.data(for: r, delegate: RedirectGuard(allowCleartext: allowCleartext)))?.1 as? HTTPURLResponse)?.statusCode
     }
 
     static func explain(_ status: Int?) -> String {
@@ -324,7 +326,7 @@ final class PlayerController {
      * Troubleshooting: asks for the stream as each player would, and logs only what came back
      * (status, type, the host it was redirected to, the playlist's first line). Never the address.
      */
-    private static func probe(_ url: URL) async {
+    private static func probe(_ url: URL, allowCleartext: Bool) async {
         // The same stream in the other live format, too.
         let other = url.pathExtension == "m3u8" ? url.deletingPathExtension().appendingPathExtension("ts") : nil
         for (agent, target) in [("AppleCoreMedia/1.0.0 (Macintosh)", url), ("VLC/3.0.21 LibVLC/3.0.21", url), ("\(Device.userAgent)/1", url)]
@@ -334,7 +336,7 @@ final class PlayerController {
             r.setValue(agent, forHTTPHeaderField: "User-Agent")
             r.setValue("bytes=0-1023", forHTTPHeaderField: "Range")
             do {
-                let (data, response) = try await URLSession.shared.data(for: r)
+                let (data, response) = try await URLSession.shared.data(for: r, delegate: RedirectGuard(allowCleartext: allowCleartext))
                 let h = response as? HTTPURLResponse
                 let moved = response.url?.host != url.host ? " redirected to \(response.url?.host ?? "?")" : ""
                 let first = String(decoding: data.prefix(60), as: UTF8.self).split(separator: "\n").first.map(String.init) ?? ""

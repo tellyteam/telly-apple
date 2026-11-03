@@ -25,12 +25,16 @@ final class HTTP: @unchecked Sendable {
             throw ProviderError("Unencrypted HTTP to \(HTTP.host(url)) is turned off. If your provider has no HTTPS, allow it in Settings.")
         }
         let (data, response): (Data, URLResponse)
+        let guarded = RedirectGuard(allowCleartext: allowCleartext)
         do {
-            (data, response) = try await session.data(from: url)
+            (data, response) = try await session.data(from: url, delegate: guarded)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
             throw ProviderError("Couldn't reach \(HTTP.host(url)).")
+        }
+        if guarded.refused {
+            throw ProviderError("\(HTTP.host(url)) redirected to unencrypted HTTP, which is turned off. If your provider has no HTTPS, allow it in Settings.")
         }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw ProviderError("\(HTTP.host(url)) returned HTTP \(http.statusCode).")
@@ -40,6 +44,29 @@ final class HTTP: @unchecked Sendable {
 
     func json(_ url: URL) async throws -> Any {
         try parseJSON(try await data(url))
+    }
+}
+
+/**
+ * Refuses a redirect to plain HTTP that the setting doesn't allow: checking only the first address
+ * would let an https one hand the login (in the query) over unencrypted. A refused redirect ends
+ * the request with the redirect's own response.
+ */
+final class RedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    let allowCleartext: Bool
+    private(set) var refused = false
+
+    init(allowCleartext: Bool) { self.allowCleartext = allowCleartext }
+
+    static func allows(_ url: URL?, allowCleartext: Bool) -> Bool {
+        url?.scheme?.lowercased() == "https" || (allowCleartext && url?.scheme?.lowercased() == "http")
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest) async -> URLRequest? {
+        if Self.allows(request.url, allowCleartext: allowCleartext) { return request }
+        refused = true
+        return nil
     }
 }
 
