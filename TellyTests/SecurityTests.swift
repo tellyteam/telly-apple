@@ -30,6 +30,16 @@ final class SecurityTests: XCTestCase {
         XCTAssertTrue(RedirectGuard.allows(URL(string: "HTTP://p.example/a"), allowCleartext: true))
         XCTAssertFalse(RedirectGuard.allows(URL(string: "ftp://p.example/a"), allowCleartext: true))
     }
+
+    /** A provider's token address on plain HTTP is let through when it carries none of the login. */
+    func testPlainHTTPWithoutTheLoginIsAllowedWhenTheLoginIsKnown() {
+        let login = ["alice", "s3cret&!"]
+        XCTAssertTrue(RedirectGuard.allows(URL(string: "http://cdn.example/stream/9f8e7d.ts?token=abc"), allowCleartext: false, secrets: login))
+        XCTAssertFalse(RedirectGuard.allows(URL(string: "http://cdn.example/movie/alice/x/1.mkv"), allowCleartext: false, secrets: login))
+        XCTAssertFalse(RedirectGuard.allows(URL(string: "http://cdn.example/1.mkv?p=s3cret%26%21"), allowCleartext: false, secrets: login))
+        XCTAssertFalse(RedirectGuard.allows(URL(string: "http://cdn.example/stream/9f8e7d.ts"), allowCleartext: false), "login unknown: refused")
+        XCTAssertFalse(RedirectGuard.allows(URL(string: "http://cdn.example/stream/9f8e7d.ts"), allowCleartext: false, secrets: [""]))
+    }
 }
 
 /** https answers with a redirect to http, which answers "plain". */

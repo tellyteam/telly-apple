@@ -51,20 +51,35 @@ final class HTTP: @unchecked Sendable {
  * Refuses a redirect to plain HTTP that the setting doesn't allow: checking only the first address
  * would let an https one hand the login (in the query) over unencrypted. A refused redirect ends
  * the request with the redirect's own response.
+ *
+ * Given the login as [secrets], plain HTTP that carries none of it is let through: many providers
+ * send every stream on to a plain-HTTP server with a token address of its own.
  */
 final class RedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     let allowCleartext: Bool
+    let secrets: [String]
     private(set) var refused = false
 
-    init(allowCleartext: Bool) { self.allowCleartext = allowCleartext }
+    init(allowCleartext: Bool, secrets: [String] = []) {
+        self.allowCleartext = allowCleartext
+        self.secrets = secrets
+    }
 
-    static func allows(_ url: URL?, allowCleartext: Bool) -> Bool {
-        url?.scheme?.lowercased() == "https" || (allowCleartext && url?.scheme?.lowercased() == "http")
+    static func allows(_ url: URL?, allowCleartext: Bool, secrets: [String] = []) -> Bool {
+        switch url?.scheme?.lowercased() {
+        case "https": return true
+        case "http":
+            if allowCleartext { return true }
+            let known = secrets.filter { !$0.isEmpty }
+            guard let text = url?.absoluteString, !known.isEmpty else { return false }
+            return !known.contains { text.contains($0) || text.contains($0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? $0) }
+        default: return false
+        }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest) async -> URLRequest? {
-        if Self.allows(request.url, allowCleartext: allowCleartext) { return request }
+        if Self.allows(request.url, allowCleartext: allowCleartext, secrets: secrets) { return request }
         refused = true
         return nil
     }
