@@ -61,9 +61,9 @@ final class AppModel {
     /** telly's relay: sync always uses it (a link saved with another one is moved to it). */
     #if DEBUG
     /** In development, a local relay can stand in (`TELLY_RELAY=http://localhost:8787`). */
-    nonisolated static let relay = ProcessInfo.processInfo.environment["TELLY_RELAY"] ?? "https://telly-sync.tellyteam.workers.dev"
+    nonisolated static let relay = ProcessInfo.processInfo.environment["TELLY_RELAY"] ?? "https://sync.gettelly.app"
     #else
-    nonisolated static let relay = "https://telly-sync.tellyteam.workers.dev"
+    nonisolated static let relay = "https://sync.gettelly.app"
     #endif
     /** Coming back to telly syncs at most this often. */
     private static let syncGapMs: Double = 60_000
