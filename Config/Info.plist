@@ -30,6 +30,14 @@
 		<string>audio</string>
 		<string>processing</string>
 	</array>
+	<!-- Export compliance (the user's decision, 2026-11-05), so App Store Connect doesn't ask on every
+	     build: exempt under Note 4 to Category 5 Part 2 of the US EAR. telly's main purpose is playing
+	     video; its encryption only supports that: HTTPS (Apple's), CryptoKit sealing sync and the
+	     Keychain, and VLCKit's libgcrypt and mbedTLS for encrypted streams and protocols. VLC for iOS,
+	     which ships the same VLCKit, makes the same declaration. Revisit if telly adds encryption of
+	     its own for anything else. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>io.github.tellyteam.telly.downloads.overnight</string>
