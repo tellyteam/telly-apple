@@ -139,12 +139,40 @@ struct SeriesDetailView: View {
         }
         if data.seasons.indices.contains(season), let id = app.activeId,
            data.seasons[season].episodes.contains(where: { Downloads.canDownload($0.url) && Downloads.shared.item(id, $0.url) == nil }) {
-            Button {
-                for ep in data.seasons[season].episodes {
-                    Downloads.shared.add(providerId: id, ep, kind: .episode, show: series.name, seriesId: series.id, art: series.cover)
-                }
-            } label: { Label("Download season", systemImage: "arrow.down.circle") }
+            let rest = rest(data)
+            // Side by side where they fit on one line each, else one under the other.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) { downloadButtons(rest, data) }
+                VStack(alignment: .leading, spacing: 10) { downloadButtons(rest, data) }
+            }
+        }
+    }
+
+    @ViewBuilder private func downloadButtons(_ rest: [Channel], _ data: SeriesData) -> some View {
+        // Part-way through this season: from the episode you're on, skipping any finished.
+        if !rest.isEmpty {
+            Button { download(rest) } label: { Label("Download the rest", systemImage: "arrow.down.circle").lineLimit(1) }
+                .buttonStyle(.borderedProminent)
+        }
+        Button { download(data.seasons[season].episodes) } label: { Label("Download season", systemImage: "arrow.down.circle").lineLimit(1) }
             .buttonStyle(.bordered)
+    }
+
+    private func download(_ episodes: [Channel]) {
+        guard let id = app.activeId else { return }
+        for ep in episodes {
+            Downloads.shared.add(providerId: id, ep, kind: .episode, show: series.name, seriesId: series.id, art: series.cover)
+        }
+    }
+
+    /**
+     * The shown season's episodes still to watch, when you're part-way through it: the one you're
+     * on and those after it, not finished and not downloaded yet. Empty otherwise.
+     */
+    private func rest(_ data: SeriesData) -> [Channel] {
+        guard let id = app.activeId, app.seriesHistory(series.id) != nil, let (s, i) = resumeAt, s == season, i > 0 else { return [] }
+        return data.seasons[s].episodes[i...].filter {
+            Downloads.canDownload($0.url) && Downloads.shared.item(id, $0.url) == nil && app.progressOf($0.url)?.finished != true
         }
     }
 

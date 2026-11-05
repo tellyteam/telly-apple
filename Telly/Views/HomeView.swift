@@ -5,6 +5,9 @@ struct HomeView: View {
     @Environment(\.compactWidth) private var compact
     /** On iPhone: Refresh and Downloads at the top right, with no bar for them. */
     var shortcuts = false
+    /** A Continue watching entry's own page, opened from it (its menu, or the banner's button). */
+    @State private var openSeries: Series?
+    @State private var openFilm: FilmLink?
 
     var body: some View {
         // No billboard on a phone-sized screen: Continue watching, first, shows the same. A
@@ -12,7 +15,7 @@ struct HomeView: View {
         let hero = shortcuts && compact ? nil : app.continueWatching.first
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
-                if let hero { Hero(entry: hero) } else if app.continueWatching.isEmpty {
+                if let hero { Hero(entry: hero, open: open) } else if app.continueWatching.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Welcome to telly").font(.largeTitle.weight(.bold))
                         Text(app.provider?.isXtream == true
@@ -29,7 +32,7 @@ struct HomeView: View {
                 }
                 if !app.continueWatching.isEmpty {
                     Shelf(title: "Continue watching") {
-                        ForEach(app.continueWatching, id: \.slot) { h in ContinueCard(entry: h) }
+                        ForEach(app.continueWatching, id: \.slot) { h in ContinueCard(entry: h, open: open) }
                     }
                 }
                 let mine = app.favouriteItems()
@@ -102,7 +105,20 @@ struct HomeView: View {
         // A see-through bar rather than none, so the sidebar button stays.
         .clearBar()
         .detailDestinations()
+        .navigationDestination(item: $openSeries) { SeriesDetailView(series: $0) }
+        .navigationDestination(item: $openFilm) { FilmDetailView(film: $0.film) }
     }
+
+    /** Opens [entry]'s series or film page: its episodes to download, say. Not for live TV. */
+    private func open(_ entry: LastWatched) {
+        if entry.isFilm { openFilm = FilmLink(film: app.film(entry.current.id) ?? entry.current) }
+        else if let s = entry.seriesId.flatMap(app.seriesItem) { openSeries = s }
+    }
+}
+
+extension LastWatched {
+    /** What its page is called, if it has one: a series' episodes, a film's details. */
+    var pageLabel: String? { live ? nil : isFilm ? "Details" : seriesId == nil ? nil : "Episodes" }
 }
 
 /** The big "pick up where you left off" banner. */
@@ -110,6 +126,7 @@ private struct Hero: View {
     @Environment(AppModel.self) private var app
     @Environment(\.compactWidth) private var compact
     let entry: LastWatched
+    let open: (LastWatched) -> Void
 
     var body: some View {
         let item = entry.current
@@ -127,8 +144,13 @@ private struct Hero: View {
                 Text(entry.isFilm || entry.live ? item.name : entry.heading).font((compact ? Font.title : .largeTitle).weight(.bold)).lineLimit(2)
                 Text(subtitle(entry)).foregroundStyle(Theme.muted)
                 if let p { ProgressBar(fraction: p.fraction).frame(width: 240) }
-                Button { app.resume(entry) } label: { Label(p.map { Playback.resumePosition($0) > 0 } == true ? "Resume" : "Play", systemImage: "play.fill") }
-                    .buttonStyle(.borderedProminent).padding(.top, 4)
+                HStack(spacing: 10) {
+                    Button { app.resume(entry) } label: { Label(p.map { Playback.resumePosition($0) > 0 } == true ? "Resume" : "Play", systemImage: "play.fill") }
+                        .buttonStyle(.borderedProminent)
+                    // The series' page, to download the next episodes; a film's, to download it.
+                    if let label = entry.pageLabel { Button(label) { open(entry) }.buttonStyle(.bordered) }
+                }
+                .padding(.top, 4)
             }
             .padding(pageInset(compact))
         }
@@ -216,6 +238,7 @@ func subtitle(_ h: LastWatched) -> String {
 private struct ContinueCard: View {
     @Environment(AppModel.self) private var app
     let entry: LastWatched
+    let open: (LastWatched) -> Void
 
     var body: some View {
         let item = entry.items[entry.continueIndex(app.progressOf)]
@@ -229,6 +252,9 @@ private struct ContinueCard: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
+            if entry.pageLabel != nil {
+                Button { open(entry) } label: { Label(entry.isFilm ? "Go to film" : "Go to series", systemImage: entry.isFilm ? "film" : "list.bullet") }
+            }
             // The app-wide accent would otherwise colour the icon blue beside the red text.
             Button(role: .destructive) { app.removeFromHistory(entry) } label: { Label("Remove from Continue watching", systemImage: "xmark.circle") }
                 .tint(.red)
