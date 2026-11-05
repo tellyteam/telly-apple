@@ -114,15 +114,7 @@ private struct SyncSection: View {
 
     var body: some View {
         SwiftUI.Section {
-            if !Plus.shared.unlocked {
-                // Sync is part of telly Plus. A linked device keeps its link while it's off.
-                Text(app.sync != nil
-                     ? "Sync is paused: it's part of telly Plus. This \(Device.name) stays linked, and picks up again with telly Plus."
-                     : "Pick up where you left off on your other devices, with telly Plus. Shares progress, Continue watching and My List, end-to-end encrypted.")
-                    .font(.callout).foregroundStyle(Theme.muted)
-                Button("See telly Plus") { Plus.shared.offered = true }
-                if app.sync != nil { Button("Stop syncing on this \(Device.name)", role: .destructive) { confirmStop = true } }
-            } else if let config = app.sync {
+            if let config = app.sync, Plus.shared.householdConfirmed {
                 LabeledContent("Keeping your place in sync", value: app.syncBusy ? "Syncing now…" : "Last synced \(ago(app.syncedAt))")
                 if let e = app.syncError { Text(e).foregroundStyle(.orange).font(.callout) }
                 Button(showCode ? "Hide code" : "Show code to link another device") { showCode.toggle() }
@@ -145,30 +137,49 @@ private struct SyncSection: View {
                 #endif
                 Text("Provider logins are never shared: sign in on each device.").font(.caption).foregroundStyle(Theme.muted)
                 Button("Stop syncing on this \(Device.name)", role: .destructive) { confirmStop = true }
+            } else if app.sync != nil, Plus.shared.unlocked {
+                // Bought here, and the relay hasn't confirmed it for the household yet: the code
+                // waits until it has.
+                Text("Turning on Sync: waiting for the relay to confirm your telly Plus.").font(.callout)
+                if let e = app.syncError, e != SyncError.plusNeeded { Text(e).foregroundStyle(.orange).font(.callout) }
+                Button(app.syncBusy ? "Checking…" : "Check again") { Task { await app.syncNow(force: true) } }.disabled(app.syncBusy)
+                Button("Unlink this \(Device.name)") { Task { await app.stopSync() } }
             } else {
-                Text("Pick up where you left off on your other devices. Shares progress, Continue watching and My List, end-to-end encrypted. Provider logins are never shared, and the relay keeps no logs.")
-                    .font(.callout).foregroundStyle(Theme.muted)
-                Button(linking && !joining ? "Starting…" : "Start syncing") { link(nil) }.disabled(linking)
-                #if os(iOS)
-                Button("Scan a QR code") { scanning = true }.disabled(linking)
-                #endif
-                Button("I have a code") { joining.toggle() }
+                // Sync is part of telly Plus, so it starts one of two ways: buying it (a household is
+                // made once it's bought), or the code of a household that has it.
+                if app.sync != nil {
+                    Text("Sync is off: this household's telly Plus has run out.").font(.callout)
+                } else {
+                    Text("Pick up where you left off on your other devices. Shares progress, Continue watching and My List, end-to-end encrypted. Provider logins are never shared, and the relay keeps no logs.")
+                        .font(.callout).foregroundStyle(Theme.muted)
+                }
+                if Plus.shared.unlocked {
+                    Button(linking && !joining ? "Turning on…" : "Turn on Sync") { link(nil) }.disabled(linking)
+                } else {
+                    Text("Sync is part of telly Plus: free for 3 days, then £4.99 a year, for every device in your household.").font(.callout)
+                    Button("Get telly Plus") { Plus.shared.offered = true }
+                }
+                Button("I already have telly Plus") { joining.toggle() }
                 if joining {
+                    #if os(iOS)
+                    Button("Scan another device's QR code") { scanning = true }.disabled(linking)
+                    #endif
                     HStack {
                         TextField("Code", text: $code, prompt: Text("ABCD-EFGH-JKMN-PQRS"))
                             .formField()
                             .plainEntry(capitals: true).font(.body.monospaced())
                         Button(linking ? "Linking…" : "Link") { link(code) }.disabled(linking || code.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
+                    Text("Use the code from Settings → Sync on one of your other devices.").font(.caption).foregroundStyle(Theme.muted)
                 }
                 if let error { Text(error).foregroundStyle(.orange).font(.callout) }
+                if app.sync != nil { Button("Unlink this \(Device.name)") { Task { await app.stopSync() } } }
             }
         } header: {
             Text("Sync")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
-                if app.sync != nil { Text("Scan the QR code with an iPhone or iPad's camera, or enter the code in Settings → Sync on your other devices. Keep it private: anyone with it can see what you've watched.") }
-                else if Plus.shared.unlocked { Text("Scan the QR code your Fire TV or Mac shows under Settings → Sync → Show code.") }
+                if app.sync != nil, Plus.shared.householdConfirmed { Text("Scan the QR code with an iPhone or iPad's camera, or enter the code in Settings → Sync on your other devices. Keep it private: anyone with it can see what you've watched.") }
                 Link("The relay keeps no logs. Read its policy", destination: URL(string: "https://github.com/tellyteam/telly-sync/blob/main/PRIVACY.md")!)
             }
         }

@@ -29,7 +29,11 @@ final class Plus {
      * The last day the sync household has telly Plus for, as the relay says: bought on a TV (Paddle)
      * or another Apple Account. Days since 1970, like the relay's. Nil when there's none.
      */
-    @ObservationIgnored private var householdUntil: Int?
+    @ObservationIgnored private var householdUntil: Int? {
+        didSet { householdConfirmed = Self.covers(householdUntil) }
+    }
+    /** The relay has confirmed the sync household's telly Plus: until then, its code isn't shown. */
+    private(set) var householdConfirmed = false
     /** Set while telly Plus is offered: from Settings, or a locked Sync or Download button. */
     var offered = false
     /**
@@ -50,6 +54,7 @@ final class Plus {
     private init() {
         bought = UserDefaults.standard.bool(forKey: Self.savedKey)
         householdUntil = UserDefaults.standard.object(forKey: Self.householdKey) as? Int
+        householdConfirmed = Self.covers(householdUntil)
         reminderClosed = UserDefaults.standard.bool(forKey: Self.reminderClosedKey)
         unlocked = false
         unlocked = current()
@@ -105,7 +110,12 @@ final class Plus {
     }
 
     private func current() -> Bool {
-        Self.included || bought || (householdUntil.map { $0 >= Int(Date().timeIntervalSince1970 / 86_400) } ?? false)
+        Self.included || bought || Self.covers(householdUntil)
+    }
+
+    /** Whether [day], the relay's last paid day, is today or later. */
+    private static func covers(_ day: Int?) -> Bool {
+        day.map { $0 >= Int(Date().timeIntervalSince1970 / 86_400) } ?? false
     }
 
     private func update() {

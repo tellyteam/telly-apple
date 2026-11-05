@@ -5,6 +5,8 @@ struct SyncError: LocalizedError {
     /** The relay won't have this device in the household: the code's gone, or it's full. */
     var outside = false
     var errorDescription: String? { message }
+    /** The relay's answer for a household without telly Plus. */
+    static let plusNeeded = "Sync needs telly Plus for this household."
 }
 
 /** Talking to the relay. Only sealed parcels ever leave the device. */
@@ -33,7 +35,7 @@ enum SyncClient {
         switch status {
         case 200..<300: return data
         case 401: throw SyncError(message: "This sync code is no longer valid on the relay.", outside: true)
-        case 402: throw SyncError(message: "Sync needs telly Plus for this household.", outside: true)
+        case 402: throw SyncError(message: SyncError.plusNeeded, outside: true)
         case 409: throw SyncError(message: "Too many devices are linked to this code (12 at most).", outside: true)
         default: throw SyncError(message: "The sync relay answered \(status).")
         }

@@ -51,6 +51,7 @@ struct PlusSection: View {
  */
 struct PlusOfferView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppModel.self) private var app
 
     var body: some View {
         SubscriptionStoreView(productIDs: [Plus.productId]) {
@@ -75,7 +76,10 @@ struct PlusOfferView: View {
         .subscriptionStorePolicyDestination(url: Plus.privacyURL, for: .privacyPolicy)
         .onInAppPurchaseCompletion { _, _ in
             await Plus.shared.refresh()
-            if Plus.shared.unlocked { dismiss() }
+            guard Plus.shared.unlocked else { return }
+            dismiss()
+            // Buying is turning Sync on: the household is made now, with no separate step.
+            if app.sync == nil { try? await app.startSync(code: nil) }
         }
         .background(Theme.background)
         #if os(macOS)
