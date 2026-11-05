@@ -907,7 +907,7 @@ final class AppModel {
 
     /** Asks the relay about the household's telly Plus. A failure leaves what's known. */
     private func checkHouseholdPlus(_ config: SyncConfig) async {
-        do { Plus.shared.setHousehold(until: try await SyncClient.plus(config.relay, SyncCrypto.deriveKeys(config.code))) } catch {}
+        do { Plus.shared.setHousehold(until: try await SyncClient.plus(config.relay, SyncCrypto.deriveKeys(config.code), device: config.device)) } catch {}
     }
 
     /**

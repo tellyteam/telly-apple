@@ -74,9 +74,12 @@ enum SyncClient {
         _ = try await send("PUT", url, keys, body: Data(signedTransaction.utf8))
     }
 
-    /** The household's telly Plus on the relay: the last day it's paid for (days since 1970), or nil. */
-    static func plus(_ relay: String, _ keys: SyncCrypto.Keys) async throws -> Int? {
-        guard let url = URL(string: "\(base(relay))/v1/\(keys.mailbox)/plus") else { throw SyncError(message: "The relay address isn't right.") }
+    /**
+     * The household's telly Plus on the relay: the last day it's paid for (days since 1970), or nil.
+     * Only told to one of the household's devices, or [device] if there's room for it to join.
+     */
+    static func plus(_ relay: String, _ keys: SyncCrypto.Keys, device: String) async throws -> Int? {
+        guard let url = URL(string: "\(base(relay))/v1/\(keys.mailbox)/\(device)/plus") else { throw SyncError(message: "The relay address isn't right.") }
         let data = try await send("GET", url, keys)
         return ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["until"] as? Int
     }
