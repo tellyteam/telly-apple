@@ -7,7 +7,7 @@ telly is a trading name of Nicholas JP Limited, which is responsible for your da
 ## In short
 
 - telly doesn't know who you are. There's nothing to sign up for.
-- What you watch, your progress and your lists stay on your devices.
+- What you watch, your progress and your lists can only be read on your devices. Your provider sees what you play from it, as with any app.
 - Your provider login stays on the device you typed it on.
 - Sync is optional and end-to-end encrypted: the relay that carries it can't read it.
 - telly Plus is bought through Apple or Paddle. telly never sees your card or email.
