@@ -97,7 +97,7 @@ struct PlusOfferView: View {
 extension Plus {
     /** Apple's standard licence for App Store apps. */
     static let termsURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
-    /** telly's privacy policy. To be written before telly Plus goes on sale (an App Store requirement). */
+    /** telly's privacy policy (PRIVACY.md in this repository), shown with the subscription as App Store rules ask. */
     static let privacyURL = URL(string: "https://github.com/tellyteam/telly-apple/blob/main/PRIVACY.md")!
 }
 
