@@ -46,6 +46,8 @@ final class PlayerController {
     @ObservationIgnored private var url: URL?
     @ObservationIgnored private var allowCleartext = false
     @ObservationIgnored private var startMs: Double = 0
+    @ObservationIgnored private var appleStartedAt = Date.distantPast
+    @ObservationIgnored private var appleExpectsVideo = true
     @ObservationIgnored private var subtitlesSettled = false
     @ObservationIgnored private var endObserver: NSObjectProtocol?
 
@@ -84,6 +86,8 @@ final class PlayerController {
     private func startApple() {
         guard let url else { return }
         engine = .apple
+        appleStartedAt = Date()
+        appleExpectsVideo = !["mp3", "aac", "m4a"].contains(url.pathExtension.lowercased())
         log("engine: Apple")
         let item = AVPlayerItem(url: url)
         av.replaceCurrentItem(with: item)
@@ -218,6 +222,20 @@ final class PlayerController {
         playing = av.timeControlStatus == .playing || av.rate > 0
         buffering = av.timeControlStatus == .waitingToPlayAtSpecifiedRate || item.status == .unknown
         if item.status == .readyToPlay && audioTracks.isEmpty { Task { await loadAppleTracks(item) } }
+        // Apple opened the stream and is playing sound, but shows no picture: a video codec it can't
+        // display (UHD channels are usually HEVC in MPEG-TS, which AVFoundation won't render even as
+        // it decodes the audio). It never flags this as a failure, so hand off to VLC, which can.
+        if appleExpectsVideo, item.status == .readyToPlay, av.timeControlStatus == .playing,
+           item.presentationSize == .zero, Date().timeIntervalSince(appleStartedAt) > 3 {
+            log("Apple plays audio but no picture after 3s; trying VLC")
+            startMs = position > 0 ? position : startMs
+            // Apple is still playing the audio here (unlike the failed case above): silence it before
+            // VLC starts the same stream, or both engines play sound at once.
+            av.replaceCurrentItem(with: nil)
+            if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+            endObserver = nil
+            startVLC()
+        }
     }
 
     private func loadAppleTracks(_ item: AVPlayerItem) async {
