@@ -43,7 +43,7 @@ final class PlusTests: XCTestCase {
     }
 
     func testSomeOtherProductDoesntUnlock() {
-        XCTAssertFalse(Plus.isUnlocked([owned("io.github.tellyteam.telly.something")], now: now))
+        XCTAssertFalse(Plus.isUnlocked([owned("app.gettelly.telly.something")], now: now))
     }
 
     /** An old, expired year alongside the renewed one: the renewal counts. */

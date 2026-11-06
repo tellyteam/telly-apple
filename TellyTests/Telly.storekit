@@ -33,7 +33,7 @@
               "locale": "en_GB"
             }
           ],
-          "productID": "io.github.tellyteam.telly.plus.yearly",
+          "productID": "app.gettelly.telly.plus.yearly",
           "recurringSubscriptionPeriod": "P1Y",
           "referenceName": "telly Plus, yearly",
           "subscriptionGroupID": "21500001",

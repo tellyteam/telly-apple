@@ -60,7 +60,7 @@ open build/mac/Build/Products/Release/telly.app
 ## Install on your iPad (free, no Apple Developer account)
 
 1. In Xcode → Settings → Accounts, add your Apple ID. A free "Personal Team" is fine.
-2. Select the **Telly** target → Signing & Capabilities, and choose that team under Team. If Xcode says the bundle id is taken, change it to something unique, for example `io.github.tellyteam.telly.yourname`.
+2. Select the **Telly** target → Signing & Capabilities, and choose that team under Team. If Xcode says the bundle id is taken, change it to something unique, for example `app.gettelly.telly.yourname`.
 3. Plug in the iPad, trust the computer, and turn on Developer Mode on the iPad (Settings → Privacy & Security → Developer Mode; the iPad restarts).
 4. Choose the iPad as the run destination and press Run (⌘R).
 5. The first time, on the iPad open Settings → General → VPN & Device Management and trust your developer certificate.
