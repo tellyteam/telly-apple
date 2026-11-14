@@ -14,6 +14,11 @@ import SwiftUI
 final class Plus {
     static let shared = Plus()
     nonisolated static let productId = "app.gettelly.telly.plus.yearly"
+    /**
+     * Its subscription group in App Store Connect. The App Store's sheet is given the group, not the
+     * product: given the product it says "Subscription Unavailable" even though the product loads.
+     */
+    nonisolated static let groupId = "22576800"
     /** Where there's no App Store to buy it from yet: the Mac's own release has it included. */
     #if os(macOS) && PLUS
     static let included = true

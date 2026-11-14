@@ -54,7 +54,7 @@ struct PlusOfferView: View {
     @Environment(AppModel.self) private var app
 
     var body: some View {
-        SubscriptionStoreView(productIDs: [Plus.productId]) {
+        SubscriptionStoreView(groupID: Plus.groupId) {
             VStack(spacing: 18) {
                 Text("telly Plus").font(.largeTitle.weight(.bold))
                 VStack(alignment: .leading, spacing: 14) {
