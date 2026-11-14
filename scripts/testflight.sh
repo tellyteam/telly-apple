@@ -8,6 +8,7 @@
 # App Store Connect API key if these are set:
 #   ASC_KEY_PATH (the .p8 file), ASC_KEY_ID, ASC_ISSUER_ID
 #
+# The archive is unsigned; the export signs it for the App Store, so no registered device is needed.
 # The build number is the time (202611051430 for 14:30 on 5 November 2026), so it always goes up.
 set -eu
 version=${1:?Usage: TEAM_ID=… sh scripts/testflight.sh <version, e.g. 1.0.0> [telly-apple-plus path]}
@@ -32,7 +33,7 @@ sh scripts/plus.sh "$plus"
 xcodebuild -project Telly.xcodeproj -scheme Telly -configuration Release \
   -destination 'generic/platform=iOS' -archivePath "$out/telly.xcarchive" \
   -allowProvisioningUpdates $auth \
-  DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+  DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic CODE_SIGNING_ALLOWED=NO \
   MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$build" \
   OTHER_SWIFT_FLAGS='$(inherited) -DPLUS' \
   archive
