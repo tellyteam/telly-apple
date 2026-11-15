@@ -36,15 +36,25 @@ enum ArtCache {
         #endif
     }
 
-    /** The saved copy if there is one, otherwise from the network. */
+    /**
+     * The saved copy if there is one, otherwise from the network. A failed fetch is tried twice
+     * more: on a first launch the logos race the whole catalogue's download, and a card that gave
+     * up kept its placeholder until its page was opened again.
+     */
     static func image(_ url: URL, providerId: String?) async -> CGImage? {
         if let hit = memory.object(forKey: url as NSURL) { return hit }
         let saved = providerId.map { file(url, $0) }
         let image = await Task.detached(priority: .userInitiated) { () -> CGImage? in
             if let saved, let data = try? Data(contentsOf: saved), let image = decode(data) { return image }
-            guard let (data, response) = try? await URLSession.shared.data(from: url),
-                  (response as? HTTPURLResponse)?.statusCode ?? 200 == 200 else { return nil }
-            return decode(data)
+            for wait in [0, 2, 5] {
+                if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+                guard let (data, response) = try? await URLSession.shared.data(from: url) else { continue }
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+                if status == 200 { return decode(data) }
+                // Missing or refused won't change on a retry; a busy server might.
+                if status < 500 && status != 429 { return nil }
+            }
+            return nil
         }.value
         if let image { memory.setObject(image, forKey: url as NSURL) }
         return image
