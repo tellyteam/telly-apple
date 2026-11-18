@@ -56,6 +56,18 @@ final class PlaybackTests: XCTestCase {
         XCTAssertEqual(Playback.resumePosition(Progress(position: 90_000, duration: 2_400_000)), 90_000)
     }
 
+    func testAFilmsCreditsCountFromTheLastTenPercent() throws {
+        // A two-hour film stopped as its 8 min 38 s of credits start: watched, though an episode wouldn't be.
+        XCTAssertTrue(Progress(position: 6_698_967, duration: 7_216_864, film: true).finished)
+        XCTAssertFalse(Progress(position: 6_698_967, duration: 7_216_864).finished)
+        XCTAssertEqual(Playback.resumePosition(Progress(position: 6_698_967, duration: 7_216_864, film: true)), 0)
+        // Whether it's a film comes from the key, and isn't saved.
+        let saved = try JSONEncoder().encode(Progress(position: 1, duration: 2, at: 3, film: true))
+        XCTAssertEqual(try JSONDecoder().decode(Progress.self, from: saved), Progress(position: 1, duration: 2, at: 3))
+        XCTAssertTrue(PlaybackRules.isFilm(progressKey: "movie/671895.vod"))
+        XCTAssertFalse(PlaybackRules.isFilm(progressKey: "series/1234.mkv"))
+    }
+
     func testM3U() {
         let channels = M3U.parse("#EXTM3U\n#EXTINF:-1 tvg-id=\"a\" tvg-logo=\"http://l\" group-title=\"News, UK\",BBC One\nhttp://s/1.ts\n#EXTINF:-1,Plain\n#EXTGRP:Misc\nhttp://s/2.ts\n")
         XCTAssertEqual(channels.map(\.name), ["BBC One", "Plain"])

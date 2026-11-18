@@ -504,14 +504,17 @@ final class AppModel {
 
     // MARK: Progress and history
 
-    func progressOf(_ url: String) -> Progress? { progress[Playback.progressKey(url)] }
+    func progressOf(_ url: String) -> Progress? {
+        let key = Playback.progressKey(url)
+        return progress[key].map { var p = $0; p.film = PlaybackRules.isFilm(progressKey: key); return p }
+    }
 
     func saveProgress(_ url: String, position: Double, duration: Double) {
         guard duration > 0, duration.isFinite else { return }
         let key = Playback.progressKey(url)
         let p = Progress(position: min(max(position, 0), duration).rounded(), duration: duration.rounded(), at: nowMs())
         progress[key] = p
-        if p.finished, let id = Playback.filmId(progressKey: key) { filmWatched(id) }
+        if let id = Playback.filmId(progressKey: key), PlaybackRules.watched(position: p.position, duration: p.duration, film: true) { filmWatched(id) }
         keep("progress", progress)
     }
 
@@ -541,11 +544,16 @@ final class AppModel {
         syncSoon()
     }
 
-    /** Starts the record from films already watched; series follow from the episode check. */
+    /**
+     * Records films whose saved progress is watched but aren't in the record yet (on opening and
+     * after a sync): at first, and any left in their credits under an earlier rule. Series follow
+     * from the episode check.
+     */
     private func seedWatched() {
         var changed = false
-        for (k, p) in progress where p.finished {
-            guard let id = Playback.filmId(progressKey: k), ledger.watched[favKey(.film, id)] == nil else { continue }
+        for (k, p) in progress {
+            guard let id = Playback.filmId(progressKey: k), PlaybackRules.watched(position: p.position, duration: p.duration, film: true),
+                  ledger.watched[favKey(.film, id)] == nil else { continue }
             ledger.watched[favKey(.film, id)] = .init(at: p.at, on: true)
             changed = true
         }

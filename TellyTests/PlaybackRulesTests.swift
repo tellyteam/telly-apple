@@ -33,13 +33,13 @@ final class PlaybackRulesTests: XCTestCase {
 
     func testWatched() throws {
         for c in try cases("watched") {
-            XCTAssertEqual(PlaybackRules.watched(position: num(c, "positionMs")!, duration: num(c, "durationMs")!), bool(c, "watched"), c["name"] as! String)
+            XCTAssertEqual(PlaybackRules.watched(position: num(c, "positionMs")!, duration: num(c, "durationMs")!, film: bool(c, "film")), bool(c, "watched"), c["name"] as! String)
         }
     }
 
     func testResume() throws {
         for c in try cases("resume") {
-            XCTAssertEqual(PlaybackRules.startAt(position: num(c, "positionMs"), duration: num(c, "durationMs")), num(c, "startAt"), c["name"] as! String)
+            XCTAssertEqual(PlaybackRules.startAt(position: num(c, "positionMs"), duration: num(c, "durationMs"), film: bool(c, "film")), num(c, "startAt"), c["name"] as! String)
         }
     }
 

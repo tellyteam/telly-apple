@@ -5,9 +5,13 @@ struct Progress: Codable, Hashable {
     var position: Double
     var duration: Double
     var at: Double = 0
+    /** Whether it's a film's: from its key (AppModel.progressOf), never saved. A film's credits count as watched sooner. */
+    var film = false
+
+    private enum CodingKeys: String, CodingKey { case position, duration, at }
 
     var fraction: Double { duration > 0 ? min(1, max(0, position / duration)) : 0 }
-    var finished: Bool { PlaybackRules.watched(position: position, duration: duration) }
+    var finished: Bool { PlaybackRules.watched(position: position, duration: duration, film: film) }
     var minutesLeft: Int { max(1, Int(((duration - position) / 60_000).rounded())) }
 }
 
@@ -37,12 +41,20 @@ enum PlaybackRules {
     /** Whether the next item starts when this one plays to its end. */
     static func advanceAtEnd(hasNext: Bool, autoNext: Bool, dismissed: Bool) -> Bool { hasNext && autoNext && !dismissed }
 
-    /** Within its credits: the last minute or the last 5%, whichever is longer. */
-    static func watched(position: Double, duration: Double) -> Bool { duration - position < max(promptMs, duration / 20) }
+    /**
+     * Within its credits: the last minute, or the last 5% of an episode and the last 10% of a film
+     * (a feature film's credits often run eight to twelve minutes), whichever is longer.
+     */
+    static func watched(position: Double, duration: Double, film: Bool) -> Bool {
+        duration - position < max(promptMs, duration / (film ? 10 : 20))
+    }
+
+    /** Whether a progress key (`movie/123.mkv`) is a film's. */
+    static func isFilm(progressKey key: String) -> Bool { key.hasPrefix("movie/") }
 
     /** Where an item starts: its saved position, unless barely started or watched. */
-    static func startAt(position: Double?, duration: Double?) -> Double {
-        guard let position, let duration, position >= minResumeMs, !watched(position: position, duration: duration) else { return 0 }
+    static func startAt(position: Double?, duration: Double?, film: Bool) -> Double {
+        guard let position, let duration, position >= minResumeMs, !watched(position: position, duration: duration, film: film) else { return 0 }
         return position
     }
 
@@ -136,7 +148,7 @@ enum Playback {
     }
 
     /** Where to start: the saved position, unless barely started or already finished. */
-    static func resumePosition(_ p: Progress?) -> Double { PlaybackRules.startAt(position: p?.position, duration: p?.duration) }
+    static func resumePosition(_ p: Progress?) -> Double { PlaybackRules.startAt(position: p?.position, duration: p?.duration, film: p?.film == true) }
 
     /** A film's id from its progress key (`movie/123.mkv`); nil for anything else. */
     static func filmId(progressKey key: String) -> String? {

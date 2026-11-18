@@ -20,16 +20,24 @@
     { "name": "dismissed", "hasNext": true, "autoNext": true, "dismissed": true, "advance": false }
   ],
   "watched": [
-    { "name": "45 min: inside the last 5%", "durationMs": 2700000, "positionMs": 2565001, "watched": true },
-    { "name": "45 min: exactly 5% left", "durationMs": 2700000, "positionMs": 2565000, "watched": false },
-    { "name": "20 min: inside the last minute", "durationMs": 1200000, "positionMs": 1140001, "watched": true },
-    { "name": "20 min: exactly a minute left", "durationMs": 1200000, "positionMs": 1140000, "watched": false }
+    { "name": "45 min episode: inside the last 5%", "durationMs": 2700000, "positionMs": 2565001, "film": false, "watched": true },
+    { "name": "45 min episode: exactly 5% left", "durationMs": 2700000, "positionMs": 2565000, "film": false, "watched": false },
+    { "name": "20 min episode: inside the last minute", "durationMs": 1200000, "positionMs": 1140001, "film": false, "watched": true },
+    { "name": "20 min episode: exactly a minute left", "durationMs": 1200000, "positionMs": 1140000, "film": false, "watched": false },
+    { "name": "2 h film: inside the last 10%", "durationMs": 7200000, "positionMs": 6480001, "film": true, "watched": true },
+    { "name": "2 h film: exactly 10% left", "durationMs": 7200000, "positionMs": 6480000, "film": true, "watched": false },
+    { "name": "2 h film stopped as the credits start (8m 38s, 7.2% left)", "durationMs": 7216864, "positionMs": 6698967, "film": true, "watched": true },
+    { "name": "the same left in an episode: not yet", "durationMs": 7216864, "positionMs": 6698967, "film": false, "watched": false },
+    { "name": "5 min film: inside the last minute", "durationMs": 300000, "positionMs": 240001, "film": true, "watched": true },
+    { "name": "5 min film: exactly a minute left", "durationMs": 300000, "positionMs": 240000, "film": true, "watched": false }
   ],
   "resume": [
-    { "name": "barely started", "durationMs": 2700000, "positionMs": 14999, "startAt": 0 },
-    { "name": "part way", "durationMs": 2700000, "positionMs": 15000, "startAt": 15000 },
-    { "name": "watched", "durationMs": 2700000, "positionMs": 2600000, "startAt": 0 },
-    { "name": "never played", "durationMs": null, "positionMs": null, "startAt": 0 }
+    { "name": "barely started", "durationMs": 2700000, "positionMs": 14999, "film": false, "startAt": 0 },
+    { "name": "part way", "durationMs": 2700000, "positionMs": 15000, "film": false, "startAt": 15000 },
+    { "name": "watched", "durationMs": 2700000, "positionMs": 2600000, "film": false, "startAt": 0 },
+    { "name": "never played", "durationMs": null, "positionMs": null, "film": false, "startAt": 0 },
+    { "name": "a film left in its credits: from the beginning", "durationMs": 7216864, "positionMs": 6698967, "film": true, "startAt": 0 },
+    { "name": "an episode left as far in: resumes", "durationMs": 7216864, "positionMs": 6698967, "film": false, "startAt": 6698967 }
   ],
   "continue": [
     { "name": "left in the credits: the next episode", "items": 3, "index": 0, "watched": [0], "film": false, "continueIndex": 1, "shown": true },
