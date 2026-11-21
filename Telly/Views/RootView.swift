@@ -22,6 +22,9 @@ struct RootView: View {
     @Environment(\.compactWidth) private var compact
     @State private var linkError: String?
     @State private var joined = false
+    @State private var sentProvider = false
+    /** What the join sheet did, acted on once it has closed. */
+    @State private var joinOutcome: JoinOutcome?
 
     var body: some View {
         @Bindable var app = app
@@ -114,32 +117,32 @@ struct RootView: View {
                   : "This replaces the devices this \(Device.name) syncs with now.")
                  + " Only link if one of your own devices is showing this code.")
         }
-        .alert("Link your new device?", isPresented: Binding(get: { app.pendingJoin != nil }, set: { if !$0 { app.pendingJoin = nil } })) {
-            Button("Link") {
-                guard let join = app.pendingJoin else { return }
-                Task {
-                    do {
-                        try await app.sendJoin(join)
-                        joined = true
-                    } catch {
-                        // Without telly Plus the offer opens instead.
-                        if !Plus.shared.offered { linkError = error.localizedDescription }
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) { app.pendingJoin = nil }
-        } message: {
-            Text("It will share progress, Continue watching and My List with this \(Device.name), end-to-end encrypted. Provider logins are never shared.")
+        .sheet(item: $app.pendingJoin, onDismiss: joinClosed) { join in
+            JoinSheet(join: join) { joinOutcome = $0 }.environment(app)
         }
         .alert("Linked", isPresented: $joined) {
             Button("OK", role: .cancel) {}
         } message: { Text("Your new device is linked. It picks up where you left off once it's signed in to your provider.") }
+        .alert("Sent", isPresented: $sentProvider) {
+            Button("OK", role: .cancel) {}
+        } message: { Text("Check the details on your TV and connect.") }
         .alert("Couldn't link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(linkError ?? "") }
         .sheet(isPresented: Binding(get: { Plus.shared.offered }, set: { Plus.shared.offered = $0 })) { PlusOfferView() }
         // telly Plus starting (bought, restored, renewed): a linked device catches up straight away.
         .onChange(of: Plus.shared.unlocked) { _, on in if on { Task { await app.syncNow(force: true) } } }
+    }
+
+    private func joinClosed() {
+        switch joinOutcome {
+        case .linked: joined = true
+        case .sent: sentProvider = true
+        // Sync is part of telly Plus: the code can be scanned again once it's on.
+        case .plusNeeded: Plus.shared.offered = true
+        case nil: break
+        }
+        joinOutcome = nil
     }
 
     /** Which provider is in use, and a quick switch to another. */

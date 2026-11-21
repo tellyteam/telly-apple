@@ -142,6 +142,7 @@ final class AppModel {
         guard let active = providers.first(where: { $0.id == meta.activeProvider }) ?? providers.first else {
             #if DEBUG
             await DevHooks.signIn(self)
+            DevHooks.scanned(self)
             #endif
             ready = true
             return
@@ -149,6 +150,9 @@ final class AppModel {
         await activate(active)
         ready = true
         Self.started = self
+        #if DEBUG
+        DevHooks.scanned(self)
+        #endif
     }
 
     // MARK: Saved providers
@@ -751,9 +755,10 @@ final class AppModel {
     // MARK: Sync
 
     /**
-     * A `telly://sync` link from the Camera app: asks before linking. A `telly://join` link is
-     * ignored here: it hands over this household's code, and could come from a message or web page,
-     * so it's only taken from the in-app scanner (Settings → Sync).
+     * A `telly://sync` link from the Camera app: asks before linking. A join link (`telly://join`,
+     * or `https://tv.gettelly.app/#…`, which is never registered as a universal link) is ignored
+     * here: answering it hands over this household's code or a provider login, and it could come
+     * from a message or web page, so it's only taken from the in-app scanner (Settings).
      */
     func open(_ url: URL) {
         guard let code = SyncLink.parse(url.absoluteString) else { return }
@@ -767,21 +772,35 @@ final class AppModel {
         try await startSync(code: link.code)
     }
 
+    /** Linking another device here would start a household, which needs telly Plus first. */
+    var linkingNeedsPlus: Bool { sync == nil && !Plus.shared.unlocked }
+
     /**
-     * Links the new device whose join QR code was scanned: leaves this household's code for it.
-     * Not linked yet, this device starts a household first (that's telly Plus).
+     * Answers a device whose join QR code was scanned: with this household's code if [link], and
+     * the saved provider [providerId] if given, in one sealed message. Not linked yet, this device
+     * starts a household first (that's telly Plus). The provider's login is read from the Keychain
+     * only now, as it's sent.
      */
-    func sendJoin(_ join: SyncJoin) async throws {
-        if pendingJoin == join { pendingJoin = nil }
-        if sync == nil {
-            guard Plus.shared.unlocked else {
-                Plus.shared.offered = true
-                throw SyncError(message: "Sync is part of telly Plus.")
-            }
-            try await startSync(code: nil)
+    func sendJoin(_ join: SyncJoin, link: Bool, providerId: String?) async throws {
+        var provider: Provider?
+        if let providerId {
+            guard join.takesProvider else { throw SyncError(message: "That device can't take a provider. Update telly on it first.") }
+            guard let saved = Keychain.get("providers").flatMap({ try? JSONDecoder().decode([SavedProvider].self, from: Data($0.utf8)) })?
+                .first(where: { $0.id == providerId })
+            else { throw SyncError(message: "That provider isn't saved on this \(Device.name) any more.") }
+            guard let sendable = SyncJoin.sendable(saved.provider) else { throw SyncError(message: "That provider's details are too long to send.") }
+            provider = sendable
         }
-        guard let config = sync else { return }
-        try await SyncClient.sendJoin(config.relay, join, code: config.code)
+        var code: String?
+        if link {
+            if sync == nil {
+                guard Plus.shared.unlocked else { throw SyncError(message: "Sync is part of telly Plus.") }
+                try await startSync(code: nil)
+            }
+            code = sync?.code
+        }
+        guard code != nil || provider != nil else { return }
+        try await SyncClient.sendJoin(sync?.relay ?? Self.relay, join, code: code, provider: provider)
     }
 
     /** Starts a new household with a fresh code, or joins one with [code]. Throws a readable error. */

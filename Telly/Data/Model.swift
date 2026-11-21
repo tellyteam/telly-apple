@@ -1,6 +1,6 @@
 import Foundation
 
-/** Where the lists come from. The login never leaves the iPad except to this provider. */
+/** Where the lists come from. The login leaves the device only to this provider, or to a TV the user chooses to send it to (JoinSheet). */
 enum Provider: Codable, Equatable {
     case xtream(name: String, server: String, username: String, password: String, allowCleartext: Bool)
     case m3u(name: String, url: String, allowCleartext: Bool)
