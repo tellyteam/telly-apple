@@ -22,7 +22,7 @@ telly is also on [Android TV and Fire TV](https://github.com/tellyteam/telly-and
 ## Privacy
 
 - telly talks only to your provider. No accounts, analytics, adverts or tracking.
-- Your provider login is kept in the device's Keychain. History, progress and My List stay on the device.
+- Your provider login is kept in the device's Keychain. It's never part of sync, and goes to a TV only when you choose to send it (Settings → Set up a TV). History, progress and My List stay on the device.
 - Plain HTTP is refused unless you allow it for your provider (some providers have no HTTPS).
 
 ## Build
