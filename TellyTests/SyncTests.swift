@@ -258,7 +258,8 @@ final class SyncJoinTests: XCTestCase {
         XCTAssertEqual(join.key, Array(0..<32))
         let box = try join.seal(code: "0123456789ABCDEF", nonce: Array(1...12))
         XCTAssertEqual(SyncCrypto.hex(box), "010102030405060708090a0b0c7ec839ba88f1d2bc6e9252752327df1e757bd8bfd52e1480e77d847a23a8054b9746a38ee4fdc41370785a")
-        XCTAssertEqual(join.open(box), "0123456789ABCDEF")
+        XCTAssertEqual(join.open(box), SyncJoin.Message(code: "0123456789ABCDEF"))
+        XCTAssertFalse(join.takesProvider)
     }
 
     func testOpensOnlyItsOwnBox() throws {
@@ -269,5 +270,120 @@ final class SyncJoinTests: XCTestCase {
         XCTAssertEqual(SyncJoin.parse(join.url), join)
         XCTAssertNil(SyncJoin.parse("telly://sync?code=0123456789ABCDEF"))
         XCTAssertNil(SyncJoin.parse("telly://join?id=00&key=AAEC"))
+    }
+
+    // SETUP-BY-PHONE.md: the tv.gettelly.app link, and a provider in the box.
+
+    static let link = "https://tv.gettelly.app/#id=00112233445566778899aabbccddeeff&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+    static let vectorA = "010102030405060708090a0b0c7ec82aa783e299e229d0417d6b3181412c27c3c4b51524b7c43e9406b29418a4e981b9e54cf895bfe4fa98c9e7a89d2fe8933dc2eebb530957107ca10a2f57631a47331387c17fcc6967c31f895662cab8120a0a8f4cdcec58e6f77853894f51f3e4565fcf047d16d5a15293d9923ae0bae54bb4be0ed202164c83b2d9e959163a1370d08fa409c4f0c60f71f75a4cbbac013310a3aa08"
+    static let vectorB = "010102030405060708090a0b0c7ec839ba88f1d2bc6e9252752327df1e757bd8bfd52e1480e77dd506eec419b3ed80fead4c8f97bddbc5d481e7e1da30ad836dccf6f7571c535f36ef4d2d1679051129199d9929943b618a55d45d7bc6b0405c4dcc4a91ad55faff7854d04d10e2e4405fde28620a8295fd40ca846ca9e0f005e2b718fd1d16508cffebfa6ed7ea178a5377d65ad6f4018d"
+    static let providerA = Provider.xtream(name: "My TV", server: "example.com:8080", username: "me", password: "p@ss wörd", allowCleartext: true)
+    static let providerB = Provider.m3u(name: "", url: "https://example.com/list.m3u", allowCleartext: false)
+
+    func testParsesBothLinkForms() throws {
+        let new = try XCTUnwrap(SyncJoin.parse(Self.link))
+        XCTAssertTrue(new.takesProvider)
+        XCTAssertEqual(new.id, "00112233445566778899aabbccddeeff")
+        XCTAssertEqual(new.key, Array(0..<32))
+        XCTAssertEqual(new.url, Self.link)
+        let old = try XCTUnwrap(SyncJoin.parse("telly://join?id=00112233445566778899aabbccddeeff&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"))
+        XCTAssertFalse(old.takesProvider)
+        XCTAssertEqual(old.key, new.key)
+        XCTAssertNotEqual(old, new, "which form it was is part of it")
+
+        // Either order, unknown parameters ignored, the id lowercased, the host in any case.
+        let loose = try XCTUnwrap(SyncJoin.parse(" HTTPS://TV.GetTelly.app#v=2&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&id=00112233445566778899AABBCCDDEEFF\n"))
+        XCTAssertEqual(loose, new)
+
+        for bad in [
+            "https://tv.gettelly.app/setup#id=00112233445566778899aabbccddeeff&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            "https://tv.gettelly.app/?x=1#id=00112233445566778899aabbccddeeff&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            "https://tv.gettelly.app:8443/#id=00112233445566778899aabbccddeeff&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            "http://tv.gettelly.app/#id=00112233445566778899aabbccddeeff&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            "https://tv.gettelly.app.example.com/#id=00112233445566778899aabbccddeeff&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            "https://sync.gettelly.app/#id=00112233445566778899aabbccddeeff&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            "https://tv.gettelly.app/?id=00112233445566778899aabbccddeeff&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            "https://tv.gettelly.app/#id=00112233445566778899aabbccddeeff",
+            "https://tv.gettelly.app/#id=0011&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+            "https://tv.gettelly.app/#id=00112233445566778899aabbccddeeff&key=AAEC",
+            "https://tv.gettelly.app/",
+        ] {
+            XCTAssertNil(SyncJoin.parse(bad), bad)
+        }
+    }
+
+    func testOpensTheSharedProviderVectors() throws {
+        let join = try XCTUnwrap(SyncJoin.parse(Self.link))
+        let a = try XCTUnwrap(SyncCrypto.unhex(Self.vectorA))
+        XCTAssertEqual(join.open(Data(a)), SyncJoin.Message(code: nil, provider: Self.providerA))
+        let b = try XCTUnwrap(SyncCrypto.unhex(Self.vectorB))
+        XCTAssertEqual(join.open(Data(b)), SyncJoin.Message(code: "0123456789ABCDEF", provider: Self.providerB))
+    }
+
+    func testSealsThenOpensEachCombination() throws {
+        let join = SyncJoin.new()
+        for (code, provider) in [("0123456789ABCDEF", nil), (nil, Self.providerA), (nil, Self.providerB),
+                                 ("0123456789ABCDEF", Self.providerA), ("0123456789ABCDEF", Self.providerB)] as [(String?, Provider?)] {
+            let box = try join.seal(code: code, provider: provider)
+            XCTAssertEqual(join.open(box), SyncJoin.Message(code: code, provider: provider))
+            XCTAssertNil(SyncJoin.new().open(box))
+        }
+        XCTAssertThrowsError(try join.seal(), "a message with neither")
+    }
+
+    /** Section 2's limits: a longer value makes the whole message unreadable. */
+    func testOpeningKeepsToTheLimits() throws {
+        let join = SyncJoin.new()
+        func open(_ json: String) throws -> SyncJoin.Message? { join.open(try Self.sealRaw(join, json)) }
+        func xtream(server: String = "example.com", username: String = "me", password: String = "pw", name: String = "") -> String {
+            #"{"provider":{"kind":"xtream","name":"\#(name)","server":"\#(server)","username":"\#(username)","password":"\#(password)"}}"#
+        }
+        let s255 = String(repeating: "s", count: 255), s256 = String(repeating: "s", count: 256)
+        XCTAssertNotNil(try open(xtream(server: s255, username: s255, password: s255, name: String(repeating: "n", count: 60))))
+        XCTAssertNil(try open(xtream(server: s256)))
+        XCTAssertNil(try open(xtream(username: s256)))
+        XCTAssertNil(try open(xtream(password: s256)))
+        XCTAssertNil(try open(xtream(name: String(repeating: "n", count: 61))))
+        let path = String(repeating: "u", count: 2048 - "https://e.com/".count)
+        XCTAssertNotNil(try open(#"{"provider":{"kind":"m3u","url":"https://e.com/\#(path)"}}"#))
+        XCTAssertNil(try open(#"{"provider":{"kind":"m3u","url":"https://e.com/\#(path)u"}}"#))
+
+        // Trimmed (not the password), a missing name and allowCleartext, unknown fields ignored.
+        XCTAssertEqual(try open(#"{"v":2,"provider":{"kind":"xtream","server":" example.com ","username":" me ","password":" pw ","x":1}}"#),
+                       SyncJoin.Message(provider: .xtream(name: "", server: "example.com", username: "me", password: " pw ", allowCleartext: false)))
+        XCTAssertEqual(try open(#"{"code":"abcd-efgh-jkmn-pqrs"}"#), SyncJoin.Message(code: "ABCDEFGHJKMNPQRS"))
+
+        for bad in [#"{}"#, #"{"v":2}"#, #"{"code":"nope"}"#, #"{"code":"0123456789ABCDEF","provider":{"kind":"stalker","url":"x"}}"#,
+                    #"{"provider":{"kind":"m3u","url":""}}"#, #"{"provider":{"kind":"xtream","server":"e.com","username":"me"}}"#,
+                    #"{"provider":{"kind":"m3u","url":"https://e.com","allowCleartext":"yes"}}"#, #"{"provider":"m3u"}"#, #"[1]"#] {
+            XCTAssertNil(try open(bad), bad)
+        }
+    }
+
+    /** What's sent is trimmed, its name shortened to fit; anything else too long isn't sent. */
+    func testOnlySendsWhatTheReceiverTakes() {
+        let long = String(repeating: "é", count: 70)
+        XCTAssertEqual(SyncJoin.sendable(.xtream(name: long, server: " e.com ", username: " me ", password: " pw ", allowCleartext: false)),
+                       .xtream(name: String(repeating: "é", count: 60), server: "e.com", username: "me", password: " pw ", allowCleartext: false))
+        XCTAssertNil(SyncJoin.sendable(.xtream(name: "", server: "e.com", username: "me", password: String(repeating: "p", count: 256), allowCleartext: false)))
+        XCTAssertNil(SyncJoin.sendable(.m3u(name: "", url: "https://e.com/" + String(repeating: "u", count: 2048), allowCleartext: false)))
+    }
+
+    /** A box sealed around any text, as another app (or someone else) might send it. */
+    static func sealRaw(_ join: SyncJoin, _ json: String) throws -> Data {
+        let nonce = Array(1...12).map(UInt8.init)
+        let box = try AES.GCM.seal(Data(json.utf8), using: SymmetricKey(data: join.key), nonce: AES.GCM.Nonce(data: nonce),
+                                   authenticating: Data("telly-join v1|\(join.id)".utf8))
+        return Data([1] + nonce) + box.ciphertext + box.tag
+    }
+}
+
+private extension SyncCrypto {
+    static func unhex(_ text: String) -> [UInt8]? {
+        let chars = Array(text)
+        guard chars.count % 2 == 0 else { return nil }
+        return stride(from: 0, to: chars.count, by: 2).map { UInt8(String(chars[$0...$0 + 1]), radix: 16) }.reduce(into: [UInt8]?([])) { all, b in
+            if let b { all?.append(b) } else { all = nil }
+        }
     }
 }

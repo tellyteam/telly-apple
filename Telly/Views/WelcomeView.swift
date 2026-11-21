@@ -38,7 +38,7 @@ private struct WelcomeView: View {
                 .foregroundStyle(Theme.muted)
             VStack(alignment: .leading, spacing: 12) {
                 point("hand.raised", "No ads, no accounts, no tracking.")
-                point("lock", "Your login stays on this \(Device.name).")
+                point("lock", "Your login stays on this \(Device.name) unless you send it to your TV.")
                 point("arrow.triangle.2.circlepath", "Pick up where you left off on your other devices.")
             }
             .padding(.vertical, 6)
@@ -125,7 +125,7 @@ struct JoinView: View {
                 }
                 Button("Back", action: onBack).buttonStyle(.borderless)
             }
-            Text("Provider logins are never shared: you'll sign in on this \(Device.name) next.")
+            Text("Provider logins are never part of sync: you'll sign in on this \(Device.name) next.")
                 .font(.caption).foregroundStyle(Theme.faint)
         }
         .qrScanner(isPresented: $scanning) { text in

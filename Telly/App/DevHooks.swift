@@ -17,6 +17,8 @@ import SwiftUI
  * - `TELLY_DEV_FIRST_WATCH=10`: seconds in the player that count as the first proper watch (5 minutes), after which telly Plus is offered.
  * - `TELLY_DEV_PLUS=offer`: opens the telly Plus offer at launch (for the App Review screenshot).
  * - `TELLY_DEV_FIRST_RUN=join`: opens the first run's Join step (its QR link is printed to the console).
+ * - `TELLY_DEV_JOIN=https://tv.gettelly.app/#id=…&key=…` (or `telly://join?…`): opens the sheet for a
+ *   join QR code as if the in-app scanner had read it (a simulator has no camera).
  * - `TELLY_RELAY=http://localhost:8787`: a local relay (`npm run dev` in telly-sync) in place of telly's.
  */
 enum DevHooks {
@@ -24,10 +26,17 @@ enum DevHooks {
 
     @MainActor static func signIn(_ app: AppModel) async {
         if env["TELLY_DEV_PLUS"] == "offer" { Plus.shared.offered = true }
-        guard app.providers.isEmpty, let value = env["TELLY_DEV_PROVIDER"] else { return }
-        let parts = value.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-        guard parts.count == 3 else { return }
-        try? await app.saveProvider(.xtream(name: "Test provider", server: parts[0], username: parts[1], password: parts[2], allowCleartext: true))
+        if app.providers.isEmpty, let value = env["TELLY_DEV_PROVIDER"] {
+            let parts = value.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            if parts.count == 3 {
+                try? await app.saveProvider(.xtream(name: "Test provider", server: parts[0], username: parts[1], password: parts[2], allowCleartext: true))
+            }
+        }
+    }
+
+    /** TELLY_DEV_JOIN: the link, as if the in-app scanner had just read it. */
+    @MainActor static func scanned(_ app: AppModel) {
+        if let link = env["TELLY_DEV_JOIN"] { app.pendingJoin = SyncJoin.parse(link) }
     }
 }
 

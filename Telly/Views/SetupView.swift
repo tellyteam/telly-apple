@@ -1,6 +1,6 @@
 import SwiftUI
 
-/** Adding (or editing) the provider. The login stays on this device, in its Keychain. */
+/** Adding (or editing) the provider. The login is kept in this device's Keychain, never synced (a TV gets it only when sent, JoinSheet). */
 struct SetupView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -65,7 +65,7 @@ struct SetupView: View {
                     if inSheet { Button("Cancel") { dismiss() }.buttonStyle(.bordered) }
                     if let onBack { Button("Back", action: onBack).buttonStyle(.bordered) }
                 }
-                Text("Your login stays on this \(Device.name), in its Keychain. telly only talks to your provider.")
+                Text("Your login is kept in this \(Device.name)'s Keychain. It's never part of sync, and goes to a TV only when you choose to send it.")
                     .font(.caption).foregroundStyle(Theme.faint)
                 if !inSheet && app.sync != nil { stillLinked }
             }

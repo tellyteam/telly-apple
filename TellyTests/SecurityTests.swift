@@ -8,6 +8,10 @@ final class SecurityTests: XCTestCase {
         let app = AppModel()
         app.open(try XCTUnwrap(URL(string: SyncJoin.new().url)))
         XCTAssertNil(app.pendingJoin)
+        var tv = SyncJoin.new()
+        tv.takesProvider = true
+        app.open(try XCTUnwrap(URL(string: tv.url)))
+        XCTAssertNil(app.pendingJoin, "nor a TV's, which could also hand over a provider login")
         app.open(try XCTUnwrap(URL(string: SyncLink.url(code: "0123456789ABCDEF"))))
         XCTAssertEqual(app.pendingLink?.code, "0123456789ABCDEF", "a sync link still asks first")
     }

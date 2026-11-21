@@ -53,6 +53,9 @@ struct SettingsView: View {
                     Button("Remove provider", role: .destructive) { confirmRemove = true }
                 }
             }
+            #if os(iOS)
+            SetUpTVSection()
+            #endif
             SwiftUI.Section("Playback") {
                 Toggle("Play the next episode automatically", isOn: $app.settings.autoNext)
                     .onChange(of: app.settings.autoNext) { app.saveSettings() }
@@ -101,6 +104,37 @@ struct SettingsView: View {
     }
 }
 
+#if os(iOS)
+/**
+ * Scanning a TV's setup code, to send it a provider or link it for sync: shown with or without
+ * telly Plus. The scanner's link leads to the same sheet as Sync's scan buttons (RootView).
+ */
+private struct SetUpTVSection: View {
+    @Environment(AppModel.self) private var app
+    @State private var scanning = false
+    @State private var error: String?
+
+    var body: some View {
+        SwiftUI.Section {
+            Button("Set up a TV") { error = nil; scanning = true }
+            if let error { Text(error).foregroundStyle(.orange).font(.callout) }
+        } footer: {
+            Text("Scan the code a telly TV app shows, to send it a provider without typing it with the remote.")
+        }
+        .qrScanner(isPresented: $scanning) { text in
+            if let join = SyncJoin.parse(text) {
+                app.pendingJoin = join
+            } else if let code = SyncLink.parse(text) {
+                // Another device's sync code: asks before linking this one, as from the Camera app.
+                if app.sync?.code != code { app.pendingLink = PendingLink(code: code) }
+            } else {
+                error = "That QR code isn't a telly one."
+            }
+        }
+    }
+}
+#endif
+
 private struct SyncSection: View {
     @Environment(AppModel.self) private var app
     @Environment(\.compactWidth) private var compact
@@ -135,7 +169,7 @@ private struct SyncSection: View {
                 #if os(iOS)
                 Button("Scan a new device's QR code") { scanning = true }
                 #endif
-                Text("Provider logins are never shared: sign in on each device.").font(.caption).foregroundStyle(Theme.muted)
+                Text("Provider logins are never part of sync: sign in on each device, or send one to a TV from Set up a TV.").font(.caption).foregroundStyle(Theme.muted)
                 Button("Stop syncing on this \(Device.name)", role: .destructive) { confirmStop = true }
             } else if app.sync != nil, Plus.shared.unlocked {
                 // Bought here, and the relay hasn't confirmed it for the household yet: the code
@@ -150,7 +184,7 @@ private struct SyncSection: View {
                 if app.sync != nil {
                     Text("Sync is off: this household's telly Plus has run out.").font(.callout)
                 } else {
-                    Text("Pick up where you left off on your other devices. Shares progress, Continue watching and My List, end-to-end encrypted. Provider logins are never shared, and the relay keeps no logs.")
+                    Text("Pick up where you left off on your other devices. Shares progress, Continue watching and My List, end-to-end encrypted. Provider logins are never part of sync, and the relay keeps no logs.")
                         .font(.callout).foregroundStyle(Theme.muted)
                 }
                 if Plus.shared.unlocked {
@@ -185,7 +219,7 @@ private struct SyncSection: View {
         }
         .qrScanner(isPresented: $scanning) { text in
             if let join = SyncJoin.parse(text) {
-                // A new device's QR code: it's handed this household's code, after asking.
+                // A new device's QR code: the sheet asks what to send it (RootView).
                 app.pendingJoin = join
             } else if let found = SyncLink.parse(text) {
                 link(found)

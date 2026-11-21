@@ -4,15 +4,32 @@ import VisionKit
 #endif
 
 extension View {
-    /** Shows the camera to read a sync QR code (iPad; Macs show their code instead). */
+    /**
+     * Shows the camera to read a sync QR code (iPhone and iPad; Macs show their code instead).
+     * [onFound] runs once the scanner has closed, so what it opens (a sheet, an alert) can show.
+     */
     func qrScanner(isPresented: Binding<Bool>, onFound: @escaping (String) -> Void) -> some View {
         #if os(iOS)
-        sheet(isPresented: isPresented) { QRScannerView(onFound: onFound) }
+        modifier(QRScannerSheet(isPresented: isPresented, onFound: onFound))
         #else
         self
         #endif
     }
 }
+
+#if os(iOS)
+private struct QRScannerSheet: ViewModifier {
+    @Binding var isPresented: Bool
+    let onFound: (String) -> Void
+    @State private var found: String?
+
+    func body(content: Content) -> some View {
+        content.sheet(isPresented: $isPresented, onDismiss: {
+            if let text = found { found = nil; onFound(text) }
+        }) { QRScannerView(onFound: { found = $0 }) }
+    }
+}
+#endif
 
 #if os(iOS)
 /** Reads a telly sync QR code with the camera (the code shown on a Fire TV, Mac or another iPad). */
