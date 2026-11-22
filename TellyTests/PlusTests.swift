@@ -76,27 +76,52 @@ final class PlusPurchaseTests: XCTestCase {
         await Plus.shared.refresh()
     }
 
+    /**
+     * Buys telly Plus in the test session. Where StoreKit won't make test purchases (a CI runner says
+     * "notEntitled", though the product loads), the test is skipped, as when the product won't load.
+     */
+    @discardableResult
+    private func buy() async throws -> Transaction {
+        do {
+            return try await session.buyProduct(identifier: Plus.productId)
+        } catch where String(describing: error).contains("notEntitled") {
+            throw XCTSkip("StoreKit won't make test purchases here (notEntitled): run these tests from Xcode.")
+        }
+    }
+
+    /**
+     * Asks StoreKit until telly Plus is [expected], for up to 5 seconds: the test session takes a
+     * moment to show a purchase, an expiry or a refund in the current entitlements.
+     */
+    private func expectUnlocked(_ expected: Bool, _ message: String, file: StaticString = #filePath, line: UInt = #line) async {
+        let deadline = Date().addingTimeInterval(5)
+        repeat {
+            await Plus.shared.refresh()
+            if Plus.shared.unlocked == expected { return }
+            try? await Task.sleep(for: .milliseconds(200))
+        } while Date() < deadline
+        XCTAssertEqual(Plus.shared.unlocked, expected, message, file: file, line: line)
+    }
+
     func testBuyingUnlocksAndExpiringLocksAgain() async throws {
-        await Plus.shared.refresh()
-        XCTAssertFalse(Plus.shared.unlocked, "nothing bought yet")
+        await expectUnlocked(false, "nothing bought yet")
 
-        try await session.buyProduct(identifier: Plus.productId)
-        await Plus.shared.refresh()
-        XCTAssertTrue(Plus.shared.unlocked, "bought")
+        let transaction = try await buy()
+        await expectUnlocked(true, "bought")
 
+        // Cancelled, then it runs out. Left to auto-renew, an expiry just renews it: the free trial
+        // becomes the paid year, and telly Plus stays on, as it should.
+        try session.disableAutoRenewForTransaction(identifier: UInt(transaction.id))
         try session.expireSubscription(productIdentifier: Plus.productId)
-        await Plus.shared.refresh()
-        XCTAssertFalse(Plus.shared.unlocked, "the year ran out")
+        await expectUnlocked(false, "the year ran out")
     }
 
     func testARefundLocks() async throws {
-        let transaction = try await session.buyProduct(identifier: Plus.productId)
-        await Plus.shared.refresh()
-        XCTAssertTrue(Plus.shared.unlocked)
+        let transaction = try await buy()
+        await expectUnlocked(true, "bought")
 
         try session.refundTransaction(identifier: UInt(transaction.id))
-        await Plus.shared.refresh()
-        XCTAssertFalse(Plus.shared.unlocked, "refunded")
+        await expectUnlocked(false, "refunded")
     }
 
     /** Free trial: the 3-day introductory offer is there, and unlocks like the full year. */
