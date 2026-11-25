@@ -17,6 +17,26 @@ final class PlusOfferTests: XCTestCase {
     }
 }
 
+/** What the offer says beside Apple's price, and what it leads with. */
+final class PlusOfferWordsTests: XCTestCase {
+    func testUnderTenPenceAWeek() {
+        XCTAssertEqual(Plus.weekly(yearly: Decimal(string: "4.99")!, currencyCode: "GBP"), "Under 10p a week")
+    }
+
+    func testOtherCurrenciesRoundUp() {
+        let text = Plus.weekly(yearly: Decimal(string: "5.99")!, currencyCode: "EUR", locale: Locale(identifier: "en_IE"))
+        XCTAssertEqual(text, "About €0.12 a week")
+    }
+
+    @MainActor
+    func testTheHeadlineFollowsWhatOpenedIt() {
+        XCTAssertEqual(Plus.Offer.general.headline, "Pick up where you left off on all your devices")
+        XCTAssertEqual(Plus.Offer.download.headline, "Download this with telly Plus")
+        XCTAssertTrue(Plus.Offer.household.headline.hasPrefix("Add this "))
+        XCTAssertTrue(Plus.Offer.household.headline.hasSuffix(" to your household with telly Plus"))
+    }
+}
+
 final class PlusTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private func owned(_ id: String = Plus.productId, expires: TimeInterval? = 86_400, revoked: Bool = false) -> Plus.Owned {

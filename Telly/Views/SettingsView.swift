@@ -191,7 +191,7 @@ private struct SyncSection: View {
                     Button(linking && !joining ? "Turning on…" : "Turn on Sync") { link(nil) }.disabled(linking)
                 } else {
                     Text("Sync is part of telly Plus: free for 3 days, then £4.99 a year, for every device in your household.").font(.callout)
-                    Button("Get telly Plus") { Plus.shared.offered = true }
+                    Button(Plus.shared.buyTitle) { Plus.shared.offered = .general }
                 }
                 Button("I already have telly Plus") { joining.toggle() }
                 if joining {

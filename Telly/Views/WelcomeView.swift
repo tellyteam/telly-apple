@@ -159,7 +159,7 @@ struct JoinView: View {
     }
 
     /** A code came in, telly Plus was offered for it, and the offer was closed without buying. */
-    private var declinedPlus: Bool { waitingForPlus != nil && !Plus.shared.offered && !Plus.shared.unlocked }
+    private var declinedPlus: Bool { waitingForPlus != nil && Plus.shared.offered == nil && !Plus.shared.unlocked }
 
     /** Whether this device's QR code is on screen (always, where there's no camera to scan with). */
     private var qrShown: Bool {
@@ -212,7 +212,7 @@ struct JoinView: View {
                     // The household has no telly Plus: offer it, and link once it's on.
                     waitingForPlus = SyncCrypto.normaliseCode(withCode)
                     self.error = "Sync is part of telly Plus, and your devices don't have it yet."
-                    Plus.shared.offered = true
+                    Plus.shared.offered = .household
                 } else {
                     self.error = error.localizedDescription
                 }

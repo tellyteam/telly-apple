@@ -104,7 +104,7 @@ struct RootView: View {
                 // Taken now: closing the alert clears the pending link before the task runs.
                 guard let link = app.pendingLink else { return }
                 // Sync is part of telly Plus: the code can be scanned again once it's on.
-                guard Plus.shared.unlocked else { Plus.shared.offered = true; return }
+                guard Plus.shared.unlocked else { Plus.shared.offered = .household; return }
                 Task {
                     do { try await app.confirmLink(link) } catch { linkError = error.localizedDescription }
                 }
@@ -129,7 +129,7 @@ struct RootView: View {
         .alert("Couldn't link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(linkError ?? "") }
-        .sheet(isPresented: Binding(get: { Plus.shared.offered }, set: { Plus.shared.offered = $0 })) { PlusOfferView() }
+        .sheet(item: Binding(get: { Plus.shared.offered }, set: { Plus.shared.offered = $0 })) { PlusOfferView(reason: $0) }
         // telly Plus starting (bought, restored, renewed): a linked device catches up straight away.
         .onChange(of: Plus.shared.unlocked) { _, on in if on { Task { await app.syncNow(force: true) } } }
     }
@@ -139,7 +139,7 @@ struct RootView: View {
         case .linked: joined = true
         case .sent: sentProvider = true
         // Sync is part of telly Plus: the code can be scanned again once it's on.
-        case .plusNeeded: Plus.shared.offered = true
+        case .plusNeeded: Plus.shared.offered = .addTV
         case nil: break
         }
         joinOutcome = nil

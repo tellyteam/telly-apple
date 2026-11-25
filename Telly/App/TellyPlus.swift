@@ -39,8 +39,13 @@ final class Plus {
     }
     /** The relay has confirmed the sync household's telly Plus: until then, its code isn't shown. */
     private(set) var householdConfirmed = false
-    /** Set while telly Plus is offered: from Settings, or a locked Sync or Download button. */
-    var offered = false
+    /**
+     * Set while telly Plus is offered, with what opened the offer: Settings, Home's reminder, the
+     * first watch, a locked Download, or a telly code that would add this device to a household.
+     */
+    var offered: Offer?
+    /** Whether this Apple Account can still have the free trial: the buy button says so. */
+    private(set) var trialAvailable = false
     /**
      * The current subscription as Apple signed it, for the sync relay: it opens Sync for the whole
      * household, Fire TV and LG included. Nil without one.
@@ -100,7 +105,11 @@ final class Plus {
         }
         signedTransaction = latest?.jws
         set(Self.isUnlocked(owned, now: Date()))
+        trialAvailable = await Product.SubscriptionInfo.isEligibleForIntroOffer(for: Self.groupId)
     }
+
+    /** The one name for the buy button: the free trial where it's still to be had. */
+    var buyTitle: String { trialAvailable ? "Start free trial" : "Get telly Plus" }
 
     /** Restore purchases: StoreKit asks the App Store for this Apple Account's purchases. */
     func restore() async {
@@ -144,7 +153,7 @@ final class Plus {
         // Once the player has gone: a sheet can't open while it's still closing.
         Task {
             try? await Task.sleep(for: .milliseconds(800))
-            offered = true
+            offered = .general
         }
     }
 
@@ -176,6 +185,52 @@ final class Plus {
     }
 
     // MARK: The rule
+
+    /** What opened the offer, so it can lead with that. */
+    enum Offer: String, Identifiable {
+        /** The first watch, Settings or Home's reminder: the benefit. */
+        case general
+        /** A locked Download button. */
+        case download
+        /** A telly code, or a household's link code, that would add this device to the household. */
+        case household
+        /** A TV's telly code, which needs a household (and so telly Plus) to add it to. */
+        case addTV
+
+        var id: String { rawValue }
+
+        /** The offer's headline. */
+        @MainActor var headline: String {
+            switch self {
+            case .general: return "Pick up where you left off on all your devices"
+            case .download: return "Download this with telly Plus"
+            case .household: return "Add this \(Device.name) to your household with telly Plus"
+            case .addTV: return "Add your TV to your household with telly Plus"
+            }
+        }
+    }
+
+    /**
+     * The weekly price beside Apple's yearly one: "Under 10p a week" for £4.99 a year, and the next
+     * whole unit up of the local currency's smallest coin elsewhere. Nil if it can't be worked out.
+     */
+    nonisolated static func weekly(yearly price: Decimal, currencyCode: String, locale: Locale = .current) -> String? {
+        guard price > 0 else { return nil }
+        let week = NSDecimalNumber(decimal: price / 52).doubleValue
+        if currencyCode == "GBP" {
+            let pence = Int(ceil(week * 100))
+            // Rounded up to a tidy figure: 9.6p is "under 10p".
+            let tidy = pence <= 10 ? 10 : Int(ceil(Double(pence) / 5) * 5)
+            return tidy < 100 ? "Under \(tidy)p a week" : nil
+        }
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = currencyCode
+        f.locale = locale
+        f.roundingMode = .up
+        guard let text = f.string(from: NSNumber(value: week)) else { return nil }
+        return "About \(text) a week"
+    }
 
     /** A transaction StoreKit says this Apple Account (or its family) holds. */
     struct Owned: Equatable {

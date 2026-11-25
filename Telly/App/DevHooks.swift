@@ -25,7 +25,7 @@ enum DevHooks {
     static let env = ProcessInfo.processInfo.environment
 
     @MainActor static func signIn(_ app: AppModel) async {
-        if env["TELLY_DEV_PLUS"] == "offer" { Plus.shared.offered = true }
+        if env["TELLY_DEV_PLUS"] == "offer" { Plus.shared.offered = .general }
         if app.providers.isEmpty, let value = env["TELLY_DEV_PROVIDER"] {
             let parts = value.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
             if parts.count == 3 {

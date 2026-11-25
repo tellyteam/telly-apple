@@ -23,7 +23,7 @@ struct PlusSection: View {
             } else {
                 Text("Sync your place across your devices, and download films and episodes to watch without a connection.")
                     .font(.callout).foregroundStyle(Theme.muted)
-                Button("See telly Plus") { Plus.shared.offered = true }
+                Button(Plus.shared.buyTitle) { Plus.shared.offered = .general }
                 Button(restoring ? "Restoring…" : "Restore purchases") {
                     Task { restoring = true; await Plus.shared.restore(); restoring = false }
                 }
@@ -45,25 +45,36 @@ struct PlusSection: View {
 }
 
 /**
- * telly Plus, offered: once after the first proper watch, then from Settings, Home's reminder, or
- * a locked Sync or Download button. The App Store's own sheet, which leads with the free trial
- * while it's still to be had, its price beneath.
+ * telly Plus, offered: once after the first proper watch, then from Settings, Home's reminder, a
+ * locked Download, or a telly code that would add this device to a household. The App Store's own
+ * sheet, which leads with the free trial while it's still to be had, its price beneath. The
+ * headline says what opened it.
  */
 struct PlusOfferView: View {
+    let reason: Plus.Offer
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var app
+    /** "Under 10p a week", from the App Store's own price for this storefront. */
+    @State private var weekly: String?
 
     var body: some View {
         SubscriptionStoreView(groupID: Plus.groupId) {
             VStack(spacing: 18) {
-                Text("telly Plus").font(.largeTitle.weight(.bold))
+                VStack(spacing: 6) {
+                    Text(reason.headline).font(.title.weight(.bold)).multilineTextAlignment(.center)
+                    if reason == .general { Text("telly Plus").font(.title3.weight(.semibold)).foregroundStyle(Theme.accent) }
+                }
                 VStack(alignment: .leading, spacing: 14) {
-                    feature("arrow.triangle.2.circlepath", "Sync", "Pick up where you left off on your other devices. Progress, Continue watching and My List, end-to-end encrypted.")
+                    feature("arrow.triangle.2.circlepath", "Sync", "Progress, Continue watching and My List on every device, end-to-end encrypted.")
                     if Downloads.available {
                         feature("arrow.down.circle", "Downloads", "Save films and episodes to watch without a connection.")
                     }
+                    feature("person.2", "Your whole household", "One purchase covers your Family Sharing group and every TV in your household: Fire TV, LG and Samsung.")
                 }
-                Text("Everything else in telly stays free.").font(.footnote).foregroundStyle(Theme.muted)
+                VStack(spacing: 4) {
+                    if let weekly { Text(weekly).font(.headline) }
+                    Text("Everything else in telly stays free.").font(.footnote).foregroundStyle(Theme.muted)
+                }
             }
             .padding(.horizontal, 24)
             .padding(.top, 32)
@@ -80,6 +91,10 @@ struct PlusOfferView: View {
             dismiss()
             // Buying is turning Sync on: the household is made now, with no separate step.
             if app.sync == nil { try? await app.startSync(code: nil) }
+        }
+        .task {
+            guard let p = try? await Product.products(for: [Plus.productId]).first else { return }
+            weekly = Plus.weekly(yearly: p.price, currencyCode: p.priceFormatStyle.currencyCode, locale: p.priceFormatStyle.locale)
         }
         .background(Theme.background)
         #if os(macOS)
@@ -111,10 +126,10 @@ struct PlusReminder: View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: "arrow.triangle.2.circlepath").font(.title2).foregroundStyle(Theme.accent).frame(width: 32)
             VStack(alignment: .leading, spacing: 8) {
-                Text("Pick up where you left off on your other devices").font(.headline)
+                Text("Pick up where you left off on all your devices").font(.headline)
                 Text(Downloads.available ? "With telly Plus: Sync, and Downloads to watch without a connection." : "With telly Plus: Sync across your devices.")
                     .font(.subheadline).foregroundStyle(Theme.muted)
-                Button("See telly Plus") { Plus.shared.offered = true }.buttonStyle(.borderedProminent)
+                Button(Plus.shared.buyTitle) { Plus.shared.offered = .general }.buttonStyle(.borderedProminent)
             }
             Spacer(minLength: 0)
             Button { Plus.shared.closeReminder() } label: { Image(systemName: "xmark") }
