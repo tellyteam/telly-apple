@@ -34,11 +34,15 @@ final class Plus {
      * The last day the sync household has telly Plus for, as the relay says: bought on a TV (Paddle)
      * or another Apple Account. Days since 1970, like the relay's. Nil when there's none.
      */
-    @ObservationIgnored private var householdUntil: Int? {
-        didSet { householdConfirmed = Self.covers(householdUntil) }
-    }
-    /** The relay has confirmed the sync household's telly Plus: until then, its code isn't shown. */
-    private(set) var householdConfirmed = false
+    private(set) var householdUntil: Int?
+    /**
+     * Which store sold the household's telly Plus, as the relay says: "apple" or "paddle" (nil when
+     * it doesn't say, for a purchase it recorded before it kept that). Settings → Manage
+     * subscription goes to Apple only for "apple": a TV's is managed from Paddle's emails.
+     */
+    private(set) var householdStore: String?
+    /** When this Apple Account's (or its family's) subscription renews or ends. */
+    private(set) var boughtUntil: Date?
     /**
      * Set while telly Plus is offered, with what opened the offer: Settings, Home's reminder, the
      * first watch, a locked Download, or a telly code that would add this device to a household.
@@ -58,23 +62,36 @@ final class Plus {
     @ObservationIgnored private var updates: Task<Void, Never>?
     private static let savedKey = "plus.unlocked"
     private static let householdKey = "plus.household"
+    private static let storeKey = "plus.store"
     private static let offeredAtKey = "plus.offeredAt"
     private static let reminderClosedKey = "plus.reminderClosed"
 
     private init() {
         bought = UserDefaults.standard.bool(forKey: Self.savedKey)
         householdUntil = UserDefaults.standard.object(forKey: Self.householdKey) as? Int
-        householdConfirmed = Self.covers(householdUntil)
+        householdStore = UserDefaults.standard.string(forKey: Self.storeKey)
         reminderClosed = UserDefaults.standard.bool(forKey: Self.reminderClosedKey)
         unlocked = false
         unlocked = current()
     }
 
     /** What the relay says about the household's telly Plus (nil: none, or no household any more). */
-    func setHousehold(until day: Int?) {
+    func setHousehold(until day: Int?, store: String? = nil) {
         householdUntil = day
+        householdStore = day == nil ? nil : store
         UserDefaults.standard.set(day, forKey: Self.householdKey)
+        UserDefaults.standard.set(householdStore, forKey: Self.storeKey)
         update()
+    }
+
+    /**
+     * The last day telly Plus is known to be on for: the household's, or this Apple Account's
+     * own subscription, whichever is later. Nil when neither says.
+     */
+    var onUntil: Date? {
+        let household = householdUntil.flatMap { Self.covers($0) ? Date(timeIntervalSince1970: Double($0) * 86_400) : nil }
+        let own = bought ? boughtUntil : nil
+        return [household, own].compactMap { $0 }.max()
     }
 
     /** At launch: reads what's owned, then follows renewals, refunds and Family Sharing changes. */
@@ -104,6 +121,7 @@ final class Plus {
             await t.finish()
         }
         signedTransaction = latest?.jws
+        boughtUntil = latest?.expires
         set(Self.isUnlocked(owned, now: Date()))
         trialAvailable = await Product.SubscriptionInfo.isEligibleForIntroOffer(for: Self.groupId)
     }

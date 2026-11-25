@@ -135,6 +135,10 @@ final class AppModel {
      * Plus and the household didn't either: it joins once telly Plus is on.
      */
     var joinAfterPlus: String?
+    /** A TV's code that waits for telly Plus (adding it needs a household), and when it was scanned. */
+    var addAfterPlus: (join: SyncJoin, at: Date)?
+    /** Set once a purchase or restore has given the household telly Plus: RootView says so. */
+    var plusTurnedOn = false
     var syncBusy = false
     var syncedAt: Double?
     var syncError: String?
@@ -143,6 +147,8 @@ final class AppModel {
     @ObservationIgnored private var syncSoonTask: Task<Void, Never>?
     /** The signed telly Plus transaction the relay last accepted for this household. */
     @ObservationIgnored private var plusShown: String?
+    /** Showing the relay a purchase again, quietly, after it couldn't be reached. */
+    @ObservationIgnored private var plusRetry: Task<Void, Never>?
     /** When the player opened, for telly Plus's offer after the first proper watch. */
     @ObservationIgnored private var playingSince: Date?
 
@@ -887,6 +893,54 @@ final class AppModel {
         }
     }
 
+    /**
+     * After an App Store purchase or restore: the household owns telly Plus. A code that was waiting
+     * for it (an add code, a typed link code) joins its household; otherwise, with no household yet,
+     * one is made. Then the signed purchase goes to the relay (`PUT /v1/{mb}/plus`) before telly
+     * says it's on. If the relay can't be reached, telly still says so (the purchase is Apple's, and
+     * it unlocks this device) and shows the relay again quietly until it's taken.
+     */
+    func attachPlus() async {
+        guard Plus.shared.unlocked else { return }
+        if let code = joinAfterPlus {
+            joinAfterPlus = nil
+            do { try await startSync(code: code) } catch { syncError = (error as? SyncError)?.message ?? error.localizedDescription }
+        }
+        if sync == nil { try? await startSync(code: nil) }
+        if await !showPlus() { retryShowingPlus() }
+        plusTurnedOn = true
+        // A TV's code lasts 10 minutes: within that, its sheet comes back to finish adding it.
+        if let waiting = addAfterPlus, Date().timeIntervalSince(waiting.at) < 9 * 60 { scannedCode = .addDevice(waiting.join) }
+        addAfterPlus = nil
+    }
+
+    /**
+     * Shows the relay this Apple Account's purchase for the household, once per purchase or renewal,
+     * and then asks what it has for the household. False if the relay couldn't be told.
+     */
+    @discardableResult
+    private func showPlus() async -> Bool {
+        guard let config = sync, let signed = Plus.shared.signedTransaction else { return true }
+        if signed != plusShown {
+            guard (try? await SyncClient.showPlus(config.relay, SyncCrypto.deriveKeys(config.code), signedTransaction: signed)) != nil else { return false }
+            plusShown = signed
+        }
+        await checkHouseholdPlus(config)
+        return true
+    }
+
+    /** Tries the relay again a few times over the next quarter of an hour, saying nothing. */
+    private func retryShowingPlus() {
+        plusRetry?.cancel()
+        plusRetry = Task {
+            for wait in [10, 30, 120, 600] {
+                try? await Task.sleep(for: .seconds(wait))
+                if Task.isCancelled { return }
+                if await showPlus() { return }
+            }
+        }
+    }
+
     /** Takes this iPad out of sync: its copy leaves the relay; the other devices keep theirs. */
     func stopSync() async {
         guard let config = sync else { return }
@@ -987,7 +1041,10 @@ final class AppModel {
 
     /** Asks the relay about the household's telly Plus. A failure leaves what's known. */
     private func checkHouseholdPlus(_ config: SyncConfig) async {
-        do { Plus.shared.setHousehold(until: try await SyncClient.plus(config.relay, SyncCrypto.deriveKeys(config.code), device: config.device)) } catch {}
+        do {
+            let p = try await SyncClient.plus(config.relay, SyncCrypto.deriveKeys(config.code), device: config.device)
+            Plus.shared.setHousehold(until: p.until, store: p.store)
+        } catch {}
     }
 
     /**

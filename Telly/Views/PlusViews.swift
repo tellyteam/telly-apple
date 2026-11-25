@@ -1,49 +1,6 @@
 import StoreKit
 import SwiftUI
 
-/** Settings → telly Plus: what it unlocks, and the subscription. */
-struct PlusSection: View {
-    @State private var restoring = false
-    #if os(iOS)
-    @State private var managing = false
-    #endif
-
-    var body: some View {
-        SwiftUI.Section {
-            if Plus.shared.unlocked && !Plus.shared.bought {
-                // Bought by the sync household elsewhere: on a TV, or another Apple Account.
-                LabeledContent("telly Plus", value: "On, with your household")
-            } else if Plus.shared.unlocked {
-                LabeledContent("telly Plus", value: "On")
-                #if os(iOS)
-                Button("Manage subscription") { managing = true }
-                #else
-                Link("Manage subscription", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
-                #endif
-            } else {
-                Text("Sync your place across your devices, and download films and episodes to watch without a connection.")
-                    .font(.callout).foregroundStyle(Theme.muted)
-                Button(Plus.shared.buyTitle) { Plus.shared.offered = .general }
-                Button(restoring ? "Restoring…" : "Restore purchases") {
-                    Task { restoring = true; await Plus.shared.restore(); restoring = false }
-                }
-                .disabled(restoring)
-            }
-        } header: {
-            Text("telly Plus")
-        } footer: {
-            Text(!Plus.shared.unlocked
-                 ? "A yearly subscription through the App Store. One covers your Family Sharing group, and every device you sync. Everything else in telly stays free."
-                 : Plus.shared.bought
-                 ? "Sync and Downloads are on, for everyone in your Family Sharing group and every device you sync."
-                 : "Sync and Downloads are on: your sync household has telly Plus.")
-        }
-        #if os(iOS)
-        .manageSubscriptionsSheet(isPresented: $managing)
-        #endif
-    }
-}
-
 /**
  * telly Plus, offered: once after the first proper watch, then from Settings, Home's reminder, a
  * locked Download, or a telly code that would add this device to a household. The App Store's own
@@ -88,9 +45,10 @@ struct PlusOfferView: View {
         .onInAppPurchaseCompletion { _, _ in
             await Plus.shared.refresh()
             guard Plus.shared.unlocked else { return }
+            // The household owns telly Plus: it's made (or joined) and given the purchase before
+            // telly says it's on.
+            await app.attachPlus()
             dismiss()
-            // Buying is turning Sync on: the household is made now, with no separate step.
-            if app.sync == nil { try? await app.startSync(code: nil) }
         }
         .task {
             guard let p = try? await Product.products(for: [Plus.productId]).first else { return }

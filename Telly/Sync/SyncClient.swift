@@ -76,14 +76,28 @@ enum SyncClient {
         _ = try await send("PUT", url, keys, body: Data(signedTransaction.utf8))
     }
 
+    /** The household's telly Plus on the relay. */
+    struct HouseholdPlus: Equatable {
+        /** The last day it's paid for (days since 1970), or nil. */
+        var until: Int?
+        /** Which store sold it, "apple" or "paddle", alongside a current [until]; nil if the relay doesn't say. */
+        var store: String?
+
+        static func parse(_ data: Data) -> HouseholdPlus {
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let until = json?["until"] as? Int
+            let store = (json?["store"] as? String).flatMap { ["apple", "paddle"].contains($0) ? $0 : nil }
+            return HouseholdPlus(until: until, store: until == nil ? nil : store)
+        }
+    }
+
     /**
-     * The household's telly Plus on the relay: the last day it's paid for (days since 1970), or nil.
-     * Only told to one of the household's devices, or [device] if there's room for it to join.
+     * The household's telly Plus on the relay. Only told to one of the household's devices, or
+     * [device] if there's room for it to join.
      */
-    static func plus(_ relay: String, _ keys: SyncCrypto.Keys, device: String) async throws -> Int? {
+    static func plus(_ relay: String, _ keys: SyncCrypto.Keys, device: String) async throws -> HouseholdPlus {
         guard let url = URL(string: "\(base(relay))/v1/\(keys.mailbox)/\(device)/plus") else { throw SyncError(message: "The relay address isn't right.") }
-        let data = try await send("GET", url, keys)
-        return ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["until"] as? Int
+        return HouseholdPlus.parse(try await send("GET", url, keys))
     }
 
     /** Takes this device's parcel off the relay (the others keep theirs). */

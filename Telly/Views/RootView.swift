@@ -23,8 +23,6 @@ struct RootView: View {
     @State private var linkError: String?
     /** What adding a device did, once its sheet has closed. */
     @State private var added: String?
-    /** A TV's code that waits for telly Plus, and when it was scanned. */
-    @State private var addAfterPlus: (SyncJoin, Date)?
     /** What the join sheet did, acted on once it has closed. */
     @State private var joinOutcome: JoinOutcome?
 
@@ -121,7 +119,7 @@ struct RootView: View {
                              set: { if $0 == nil { app.scannedCode = nil } }), onDismiss: joinClosed) { join in
             JoinSheet(join: join) { outcome in
                 joinOutcome = outcome
-                if case .plusNeeded = outcome { addAfterPlus = (join, Date()) }
+                if case .plusNeeded = outcome { app.addAfterPlus = (join, Date()) }
             }
             .environment(app)
         }
@@ -131,21 +129,17 @@ struct RootView: View {
         .alert("Couldn't add it", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(linkError ?? "") }
-        .sheet(item: Binding(get: { Plus.shared.offered }, set: { Plus.shared.offered = $0 })) { PlusOfferView(reason: $0) }
-        // telly Plus starting (bought, restored, renewed): a linked device catches up straight away,
-        // and a code that was waiting for it carries on.
-        .onChange(of: Plus.shared.unlocked) { _, on in
-            guard on else { return }
-            Task {
-                if let code = app.joinAfterPlus {
-                    app.joinAfterPlus = nil
-                    do { try await app.startSync(code: code) } catch { linkError = error.localizedDescription }
-                }
-                await app.syncNow(force: true)
-                // A TV's code lasts 10 minutes: within that, its sheet comes back to finish adding it.
-                if let (join, at) = addAfterPlus, Date().timeIntervalSince(at) < 9 * 60 { app.scannedCode = .addDevice(join) }
-                addAfterPlus = nil
-            }
+        .sheet(item: Binding(get: { Plus.shared.offered }, set: { Plus.shared.offered = $0 }), onDismiss: {
+            // Closed without buying: a code that was waiting for telly Plus is let go.
+            if !Plus.shared.unlocked { app.joinAfterPlus = nil; app.addAfterPlus = nil }
+        }) { PlusOfferView(reason: $0) }
+        // telly Plus starting (bought, restored, renewed, or the household's): a linked device
+        // catches up straight away.
+        .onChange(of: Plus.shared.unlocked) { _, on in if on { Task { await app.syncNow(force: true) } } }
+        .alert("telly Plus is on", isPresented: $app.plusTurnedOn) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(Plus.shared.onUntil.map { "For this household until \($0.formatted(date: .abbreviated, time: .omitted))." } ?? "For this household.")
         }
     }
 

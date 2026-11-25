@@ -312,6 +312,16 @@ final class SyncJoinTests: XCTestCase {
         }
     }
 
+    /** GET …/plus: which store sold it comes only with a current until, and only as one of the two. */
+    func testHouseholdPlusSaysWhichStore() {
+        func parse(_ json: String) -> SyncClient.HouseholdPlus { SyncClient.HouseholdPlus.parse(Data(json.utf8)) }
+        XCTAssertEqual(parse(#"{"until":20800,"onSale":true,"store":"apple"}"#), .init(until: 20800, store: "apple"))
+        XCTAssertEqual(parse(#"{"until":20800,"onSale":true,"store":"paddle"}"#), .init(until: 20800, store: "paddle"))
+        XCTAssertEqual(parse(#"{"until":20800,"onSale":true}"#), .init(until: 20800, store: nil), "recorded before the relay kept it")
+        XCTAssertEqual(parse(#"{"until":null,"onSale":false,"store":"apple"}"#), .init(until: nil, store: nil))
+        XCTAssertEqual(parse(#"{"until":20800,"store":"elsewhere"}"#), .init(until: 20800, store: nil))
+    }
+
     /** One scanner reads every kind: which way it goes comes from add=1; plus= and setup= are the page's. */
     func testTheScannerTellsAddCodesFromNewDevices() throws {
         let new = try XCTUnwrap(SyncJoin.parse(Self.link))

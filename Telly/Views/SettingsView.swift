@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 
 private enum ProviderSheet: Identifiable {
@@ -53,16 +54,12 @@ struct SettingsView: View {
                     Button("Remove provider", role: .destructive) { confirmRemove = true }
                 }
             }
-            #if os(iOS)
-            SetUpTVSection()
-            #endif
             SwiftUI.Section("Playback") {
                 Toggle("Play the next episode automatically", isOn: $app.settings.autoNext)
                     .onChange(of: app.settings.autoNext) { app.saveSettings() }
             }
-            if !Plus.included { PlusSection() }
+            TellyPlusSection()
             if app.provider?.isXtream == true && Downloads.available && Plus.shared.unlocked { DownloadSettingsSection() }
-            SyncSection()
             SwiftUI.Section {
                 Button(app.refreshing ? "Refreshing…" : "Refresh lists") { Task { await app.refresh() } }.disabled(app.refreshing)
                 Button(clearing ? "Clearing…" : "Clear saved lists") {
@@ -104,123 +101,175 @@ struct SettingsView: View {
     }
 }
 
-#if os(iOS)
 /**
- * Scanning a TV's setup code, to send it a provider or link it for sync: shown with or without
- * telly Plus. The scanner's link leads to the same sheet as Sync's scan buttons (RootView).
+ * Settings → telly Plus: one section for telly Plus and Sync, since the household owns telly Plus.
+ * In a household with it: its status, Add a device, Sync now, Show link code and Stop syncing.
+ * Otherwise: what it is, the buy button, and joining the household's other devices (scanning a
+ * telly code, which also sends a TV a provider, or entering a link code).
  */
-private struct SetUpTVSection: View {
-    @Environment(AppModel.self) private var app
-    @State private var scanning = false
-
-    var body: some View {
-        SwiftUI.Section {
-            Button("Scan a telly code") { scanning = true }
-        } footer: {
-            Text("Scan the code a telly TV app shows, to send it a provider without typing it with the remote.")
-        }
-        .tellyCodeScanner(isPresented: $scanning)
-    }
-}
-#endif
-
-private struct SyncSection: View {
+private struct TellyPlusSection: View {
     @Environment(AppModel.self) private var app
     @Environment(\.compactWidth) private var compact
-    @State private var joining = false
+    @State private var typing = false
     @State private var code = ""
     @State private var linking = false
-    @State private var showCode = true
+    @State private var showCode = false
     @State private var error: String?
     @State private var confirmStop = false
     @State private var scanning = false
+    @State private var restoring = false
+    #if os(iOS)
+    @State private var managing = false
+    #endif
+
+    private var plus: Plus { Plus.shared }
 
     var body: some View {
         SwiftUI.Section {
-            if let config = app.sync, Plus.shared.householdConfirmed {
-                LabeledContent("Keeping your place in sync", value: app.syncBusy ? "Syncing now…" : "Last synced \(ago(app.syncedAt))")
-                if let e = app.syncError { Text(e).foregroundStyle(.orange).font(.callout) }
-                Button(showCode ? "Hide code" : "Show code to link another device") { showCode.toggle() }
-                if showCode {
-                    // Side by side where there's room; on a phone the code goes above the QR code.
-                    let layout = compact ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(spacing: 20))
-                    layout {
-                        Text(SyncCrypto.formatCode(config.code)).font(.system(.title, design: .monospaced).weight(.semibold)).textSelection(.enabled)
-                            .lineLimit(1).minimumScaleFactor(0.6)
-                        if let qr = SyncLink.image(SyncLink.url(code: config.code)) {
-                            Image(cgImage: qr).interpolation(.none).resizable().frame(width: 150, height: 150)
-                                .padding(10).background(.white, in: RoundedRectangle(cornerRadius: 10))
-                                .accessibilityLabel("QR code to link another device")
-                        }
-                    }
-                }
-                Button(app.syncBusy ? "Syncing…" : "Sync now") { Task { await app.syncNow(force: true) } }.disabled(app.syncBusy)
-                #if os(iOS)
-                Button("Scan a telly code") { scanning = true }
-                #endif
-                Text("Provider logins are never part of sync: sign in on each device, or send one to a TV from Set up a TV.").font(.caption).foregroundStyle(Theme.muted)
-                Button("Stop syncing on this \(Device.name)", role: .destructive) { confirmStop = true }
-            } else if app.sync != nil, Plus.shared.unlocked {
-                // Bought here, and the relay hasn't confirmed it for the household yet: the code
-                // waits until it has.
-                Text("Turning on Sync: waiting for the relay to confirm your telly Plus.").font(.callout)
-                if let e = app.syncError, e != SyncError.plusNeeded { Text(e).foregroundStyle(.orange).font(.callout) }
-                Button(app.syncBusy ? "Checking…" : "Check again") { Task { await app.syncNow(force: true) } }.disabled(app.syncBusy)
-                Button("Unlink this \(Device.name)") { Task { await app.stopSync() } }
-            } else {
-                // Sync is part of telly Plus, so it starts one of two ways: buying it (a household is
-                // made once it's bought), or the code of a household that has it.
-                if app.sync != nil {
-                    Text("Sync is off: this household's telly Plus has run out.").font(.callout)
-                } else {
-                    Text("Pick up where you left off on your other devices. Shares progress, Continue watching and My List, end-to-end encrypted. Provider logins are never part of sync, and the relay keeps no logs.")
-                        .font(.callout).foregroundStyle(Theme.muted)
-                }
-                if Plus.shared.unlocked {
-                    Button(linking && !joining ? "Turning on…" : "Turn on Sync") { link(nil) }.disabled(linking)
-                } else {
-                    Text("Sync is part of telly Plus: free for 3 days, then £4.99 a year, for every device in your household.").font(.callout)
-                    Button(Plus.shared.buyTitle) { Plus.shared.offered = .general }
-                }
-                Button("I already have telly Plus") { joining.toggle() }
-                if joining {
+            if let config = app.sync {
+                if plus.unlocked {
+                    Text(status).font(.callout)
+                    LabeledContent("Last synced", value: app.syncBusy ? "Syncing now…" : ago(app.syncedAt))
+                    if let e = app.syncError { Text(e).foregroundStyle(.orange).font(.callout) }
                     #if os(iOS)
-                    Button("Scan a telly code") { scanning = true }.disabled(linking)
+                    Button("Add a device") { scanning = true }
                     #endif
-                    HStack {
-                        TextField("Code", text: $code, prompt: Text("ABCD-EFGH-JKMN-PQRS"))
-                            .formField()
-                            .plainEntry(capitals: true).font(.body.monospaced())
-                        Button(linking ? "Linking…" : "Link") { link(code) }.disabled(linking || code.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                    Text("Use the code from Settings → Sync on one of your other devices.").font(.caption).foregroundStyle(Theme.muted)
+                    Button(app.syncBusy ? "Syncing…" : "Sync now") { Task { await app.syncNow(force: true) } }.disabled(app.syncBusy)
+                    Button(showCode ? "Hide link code" : "Show link code") { showCode.toggle() }
+                    if showCode { linkCode(config.code) }
+                    manage
+                } else {
+                    Text("telly Plus has run out for this household, so Sync is off.").font(.callout)
+                    buy
                 }
-                if let error { Text(error).foregroundStyle(.orange).font(.callout) }
-                if app.sync != nil { Button("Unlink this \(Device.name)") { Task { await app.stopSync() } } }
+                Button("Stop syncing on this \(Device.name)", role: .destructive) { confirmStop = true }
+            } else {
+                if plus.unlocked {
+                    Text(Plus.included ? "Sync is included with telly for Mac." : "telly Plus is on.").font(.callout)
+                    Button(linking ? "Turning on…" : "Turn on Sync") { start() }.disabled(linking)
+                    manage
+                } else {
+                    Text("Pick up where you left off on all your devices: progress, Continue watching and My List, end-to-end encrypted."
+                         + (Downloads.available ? " And download films and episodes to watch without a connection." : ""))
+                        .font(.callout).foregroundStyle(Theme.muted)
+                    buy
+                }
+                join
             }
+            if let error { Text(error).foregroundStyle(.orange).font(.callout) }
         } header: {
-            Text("Sync")
+            Text("telly Plus")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
-                if app.sync != nil, Plus.shared.householdConfirmed { Text("Scan the QR code with an iPhone or iPad's camera, or enter the code in Settings → Sync on your other devices. Keep it private: anyone with it can see what you've watched.") }
+                if app.sync != nil && showCode {
+                    Text("Enter the link code on your other devices. Keep it private: anyone with it can see what you've watched.")
+                }
+                Text("One purchase covers your Family Sharing group and every TV in your household: Fire TV, LG and Samsung. Provider logins are never part of sync.")
                 Link("The relay keeps no logs. Read its policy", destination: URL(string: "https://github.com/tellyteam/telly-sync/blob/main/PRIVACY.md")!)
             }
         }
         .tellyCodeScanner(isPresented: $scanning)
+        #if os(iOS)
+        .manageSubscriptionsSheet(isPresented: $managing)
+        #endif
         .confirmationDialog("Stop syncing on this \(Device.name)?", isPresented: $confirmStop, titleVisibility: .visible) {
-            Button("Stop syncing", role: .destructive) { Task { await app.stopSync(); showCode = true } }
+            Button("Stop syncing", role: .destructive) { Task { await app.stopSync(); showCode = false } }
         } message: { Text("Your other devices keep syncing with each other.") }
     }
 
-    private func link(_ withCode: String?) {
+    /** "telly Plus is on for this household until 3 Dec 2027". */
+    private var status: String {
+        guard let until = plus.onUntil else { return Plus.included ? "Syncing with your household." : "telly Plus is on for this household." }
+        return "telly Plus is on for this household until \(until.formatted(date: .abbreviated, time: .omitted))."
+    }
+
+    /** The price line and the one buy button, and Restore. */
+    @ViewBuilder private var buy: some View {
+        if !Plus.included {
+            Text(plus.trialAvailable ? "Free for 3 days, then £4.99 a year for your household." : "£4.99 a year for your household.").font(.callout)
+            Button(plus.buyTitle) { Plus.shared.offered = .general }
+            Button(restoring ? "Restoring…" : "Restore purchases") {
+                Task {
+                    restoring = true
+                    await Plus.shared.restore()
+                    // Restored: the household owns it, as after buying.
+                    if Plus.shared.bought { await app.attachPlus() }
+                    restoring = false
+                }
+            }
+            .disabled(restoring)
+        }
+    }
+
+    /** Where the subscription is managed: Apple's sheet only for an App Store purchase. */
+    @ViewBuilder private var manage: some View {
+        if plus.householdStore == "paddle" && !plus.bought {
+            Text("This household's telly Plus was bought on a TV. Manage it from Paddle's emails.")
+                .font(.caption).foregroundStyle(Theme.muted)
+        } else if plus.householdStore == "apple" || plus.bought {
+            #if os(iOS)
+            Button("Manage subscription") { managing = true }
+            #else
+            Link("Manage subscription", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
+            #endif
+        }
+    }
+
+    /** Joining the household's other devices: scanning a telly code, or entering a link code. */
+    @ViewBuilder private var join: some View {
+        #if os(iOS)
+        Button("Scan a telly code") { scanning = true }.disabled(linking)
+        #endif
+        Button("Enter a link code") { typing.toggle() }
+        if typing {
+            HStack {
+                TextField("Link code", text: $code, prompt: Text("ABCD-EFGH-JKMN-PQRS"))
+                    .formField()
+                    .plainEntry(capitals: true).font(.body.monospaced())
+                Button(linking ? "Joining…" : "Join") { joinWithCode() }.disabled(linking || code.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            Text("The link code is in Settings → telly Plus on one of your other devices.").font(.caption).foregroundStyle(Theme.muted)
+        }
+    }
+
+    /** The household's link code: the 16 characters, and on a Mac the QR code an iPhone or iPad can scan. */
+    @ViewBuilder private func linkCode(_ code: String) -> some View {
+        let layout = compact ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(spacing: 20))
+        layout {
+            Text(SyncCrypto.formatCode(code)).font(.system(.title, design: .monospaced).weight(.semibold)).textSelection(.enabled)
+                .lineLimit(1).minimumScaleFactor(0.6)
+            #if os(macOS)
+            if let qr = SyncLink.image(SyncLink.url(code: code)) {
+                Image(cgImage: qr).interpolation(.none).resizable().frame(width: 150, height: 150)
+                    .padding(10).background(.white, in: RoundedRectangle(cornerRadius: 10))
+                    .accessibilityLabel("QR code to link another device")
+            }
+            #endif
+        }
+    }
+
+    /** A new household, for telly Plus this Apple Account (or the Mac) already has. */
+    private func start() {
+        linking = true
+        error = nil
+        Task {
+            do { try await app.startSync(code: nil) } catch { self.error = error.localizedDescription }
+            linking = false
+        }
+    }
+
+    private func joinWithCode() {
+        guard let normal = SyncCrypto.normaliseCode(code) else {
+            error = "That code isn't right: it's 16 letters and numbers, like ABCD-EFGH-JKMN-PQRS."
+            return
+        }
         linking = true
         error = nil
         Task {
             do {
-                try await app.startSync(code: withCode)
-                joining = false
+                try await app.joinHousehold(.link(normal))
+                typing = false
                 code = ""
-                showCode = true
             } catch {
                 self.error = error.localizedDescription
             }
