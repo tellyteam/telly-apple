@@ -33,6 +33,46 @@ enum Keychain {
     }
 }
 
+#if os(iOS)
+/**
+ * The household's link code in iCloud Keychain, only if the person agreed (Settings → telly Plus):
+ * their other iPhones and iPads on the same Apple Account then join the household by themselves.
+ * iCloud Keychain is end-to-end encrypted; telly and the relay never see it. This is the one
+ * keychain item that leaves the device (PROTOCOL.md, "Link code"; PRIVACY.md).
+ */
+enum ICloudLinkCode {
+    private static let service = "io.github.tellyteam.telly.household"
+    private static let account = "link-code"
+
+    private static var query: [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+         kSecAttrAccount as String: account, kSecAttrSynchronizable as String: kCFBooleanTrue as Any]
+    }
+
+    static func get() -> String? {
+        var q = query
+        q[kSecReturnData as String] = true
+        var out: AnyObject?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
+        return String(data: data, encoding: .utf8).flatMap(SyncCrypto.normaliseCode)
+    }
+
+    static func set(_ code: String) {
+        delete()
+        var item = query
+        item[kSecValueData as String] = Data(code.utf8)
+        // Synced items can't be this-device-only.
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        SecItemAdd(item as CFDictionary, nil)
+    }
+
+    /** Takes it out of iCloud Keychain, and so off every device on the Apple Account. */
+    static func delete() {
+        SecItemDelete(query as CFDictionary)
+    }
+}
+#endif
+
 /**
  * The app's own records (progress, history, My List…) as JSON files, with complete file protection.
  * They go into backups, so provider logins are kept out of them (LoginMask).

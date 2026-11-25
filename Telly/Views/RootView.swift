@@ -136,6 +136,12 @@ struct RootView: View {
         // telly Plus starting (bought, restored, renewed, or the household's): a linked device
         // catches up straight away.
         .onChange(of: Plus.shared.unlocked) { _, on in if on { Task { await app.syncNow(force: true) } } }
+        .alert("Keep your link code in iCloud Keychain?", isPresented: Binding(get: { app.askAboutICloud && !app.plusTurnedOn }, set: { if !$0 { app.askAboutICloud = false } })) {
+            Button("Keep in iCloud Keychain") { app.keepCodeInICloud(true) }
+            Button("Not now", role: .cancel) { app.notNowForICloud() }
+        } message: {
+            Text("Your other iPhones and iPads on this Apple Account will join your household by themselves. iCloud Keychain is end-to-end encrypted: telly and its relay never see it. You can change this in Settings → telly Plus.")
+        }
         .alert("telly Plus is on", isPresented: $app.plusTurnedOn) {
             Button("OK", role: .cancel) {}
         } message: {

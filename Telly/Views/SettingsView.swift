@@ -137,6 +137,9 @@ private struct TellyPlusSection: View {
                     Button(app.syncBusy ? "Syncing…" : "Sync now") { Task { await app.syncNow(force: true) } }.disabled(app.syncBusy)
                     Button(showCode ? "Hide link code" : "Show link code") { showCode.toggle() }
                     if showCode { linkCode(config.code) }
+                    #if os(iOS)
+                    Toggle("Keep link code in iCloud Keychain", isOn: Binding(get: { app.keepsCodeInICloud }, set: { app.keepCodeInICloud($0) }))
+                    #endif
                     manage
                 } else {
                     Text("telly Plus has run out for this household, so Sync is off.").font(.callout)
@@ -164,6 +167,11 @@ private struct TellyPlusSection: View {
                 if app.sync != nil && showCode {
                     Text("Enter the link code on your other devices. Keep it private: anyone with it can see what you've watched.")
                 }
+                #if os(iOS)
+                if app.sync != nil && Plus.shared.unlocked {
+                    Text("In iCloud Keychain, your other iPhones and iPads on this Apple Account join your household by themselves. It's end-to-end encrypted: telly and its relay never see it. Turning it off takes it off all of them.")
+                }
+                #endif
                 Text("One purchase covers your Family Sharing group and every TV in your household: Fire TV, LG and Samsung. Provider logins are never part of sync.")
                 Link("The relay keeps no logs. Read its policy", destination: URL(string: "https://github.com/tellyteam/telly-sync/blob/main/PRIVACY.md")!)
             }

@@ -33,7 +33,9 @@ telly uses no analytics, crash-reporting, advertising or tracking services.
 
 ## Sync
 
-When you turn on sync, your devices share progress, Continue watching and My List through telly's relay. Each device seals what it shares with a key made from your household's link code, which never leaves your devices. The relay stores the sealed boxes and can't open them.
+When you turn on sync, your devices share progress, Continue watching and My List through telly's relay. Each device seals what it shares with a key made from your household's link code, which never leaves your devices unless you choose to keep it in iCloud Keychain (below). The relay stores the sealed boxes and can't open them.
+
+On iPhone and iPad you can choose to keep the link code in iCloud Keychain (Settings → telly Plus; it's off until you agree), so your other iPhones and iPads on the same Apple Account join your household by themselves. iCloud Keychain is end-to-end encrypted by Apple: telly and its relay never see it. Turning it off removes it from iCloud Keychain on all your devices.
 
 The relay keeps, for each household that syncs:
 
@@ -45,7 +47,7 @@ It never keeps request logs or internet addresses, nor times of day except when 
 
 ## Setting up a TV from your phone
 
-To save typing a login with a remote, a telly TV app can show a QR code. Scanning it with telly on your iPhone or iPad lets you send the TV a provider you've already added, link it for sync, or both. Sending a provider is off until you turn it on, each time. Without the app, the same code opens tv.gettelly.app in your phone's browser, where you can type the details instead: the page loads nothing from anywhere else, and seals them in the browser the same way.
+To save typing a login with a remote, a telly TV app can show a QR code. Scanning it with telly on your iPhone or iPad (**Scan a telly code**) adds the TV to your household and, if you leave "Also send" ticked, sends it the provider you've chosen; you can also send just the provider. telly only acts on a code its own scanner read, never on a link opened from a message or web page. Without the app, the same code opens tv.gettelly.app in your phone's browser, where you can type the details instead: the page loads nothing from anywhere else, and seals them in the browser the same way.
 
 What you send is sealed on your phone with a key that's only in the QR code, so only the TV showing the code can open it. It passes through telly's relay, which can't read it and deletes it when the TV collects it, or ten minutes after it was sent. The TV shows you the details before using them.
 
@@ -56,7 +58,7 @@ telly Plus (sync, and downloads on Apple devices) is a yearly subscription for a
 - **On iPhone, iPad and Mac** it's sold by Apple. Apple handles the payment under [its own privacy policy](https://www.apple.com/legal/privacy/). Your device shows the relay Apple's signed proof of purchase, so every device in your household gets telly Plus.
 - **On a TV** it's sold by [Paddle](https://www.paddle.com), which takes the payment, handles tax and sends your receipt. Paddle has your email and payment details under [its own privacy policy](https://www.paddle.com/legal/privacy). Paddle tells the relay only that a subscription is paid, until when, and when it ends.
 
-For telly Plus, the relay keeps a hash of the purchase's id (never the id itself), the last day it's paid for, and whether it was a test purchase. For a purchase made through Paddle, it also keeps a hash of each payment's transaction number for a year after the payment runs out, so you can move telly Plus to a new household with your receipt.
+For telly Plus, the relay keeps a hash of the purchase's id (never the id itself), the last day it's paid for, which store sold it (Apple or Paddle, so your devices can point you to the right place to manage it), and whether it was a test purchase. For a purchase made through Paddle, it also keeps a hash of each payment's transaction number for a year after the payment runs out, so you can move telly Plus to a new household with your receipt.
 
 ## Why telly can use this data
 

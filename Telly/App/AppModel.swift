@@ -139,6 +139,18 @@ final class AppModel {
     var addAfterPlus: (join: SyncJoin, at: Date)?
     /** Set once a purchase or restore has given the household telly Plus: RootView says so. */
     var plusTurnedOn = false
+    /**
+     * Keeping the link code in iCloud Keychain, so this Apple Account's other iPhones and iPads join
+     * by themselves: off until the person agrees (Settings → telly Plus, or the one-time question
+     * after joining or making a household).
+     */
+    private(set) var keepsCodeInICloud = UserDefaults.standard.bool(forKey: AppModel.iCloudKey)
+    /** Set once, after joining or making a household, to ask about iCloud Keychain. */
+    var askAboutICloud = false
+    nonisolated static let iCloudKey = "sync.icloud"
+    nonisolated static let iCloudAskedKey = "sync.icloudAsked"
+    /** This device stopped syncing: a code in iCloud Keychain doesn't join it again by itself. */
+    nonisolated static let iCloudLeftKey = "sync.icloudLeft"
     var syncBusy = false
     var syncedAt: Double?
     var syncError: String?
@@ -177,11 +189,13 @@ final class AppModel {
             DevHooks.scanned(self)
             #endif
             ready = true
+            await joinFromICloud()
             return
         }
         await activate(active)
         ready = true
         Self.started = self
+        await joinFromICloud()
         #if DEBUG
         DevHooks.scanned(self)
         #endif
@@ -891,6 +905,7 @@ final class AppModel {
             Plus.shared.setHousehold(until: nil)
             throw SyncError(message: error)
         }
+        householdChanged()
     }
 
     /**
@@ -941,6 +956,48 @@ final class AppModel {
         }
     }
 
+    // MARK: iCloud Keychain
+
+    /** Turns keeping the link code in iCloud Keychain on or off. Off takes it off every device. */
+    func keepCodeInICloud(_ on: Bool) {
+        #if os(iOS)
+        keepsCodeInICloud = on
+        UserDefaults.standard.set(on, forKey: Self.iCloudKey)
+        UserDefaults.standard.set(true, forKey: Self.iCloudAskedKey)
+        if on, let code = sync?.code { ICloudLinkCode.set(code) } else if !on { ICloudLinkCode.delete() }
+        #endif
+    }
+
+    /** "Not now" to the one-time question: asked, and nothing else changes (another device's copy stays). */
+    func notNowForICloud() {
+        UserDefaults.standard.set(true, forKey: Self.iCloudAskedKey)
+    }
+
+    /**
+     * With no household here, and a link code in iCloud Keychain that another of this Apple
+     * Account's devices keeps there: joins it, quietly. Not after this device stopped syncing. A
+     * household without telly Plus is left for later.
+     */
+    func joinFromICloud() async {
+        #if os(iOS)
+        guard sync == nil, !UserDefaults.standard.bool(forKey: Self.iCloudLeftKey), let code = ICloudLinkCode.get() else { return }
+        guard (try? await startSync(code: code)) != nil else { return }
+        // It came from iCloud Keychain, so the person agreed to keep it there.
+        keepsCodeInICloud = true
+        UserDefaults.standard.set(true, forKey: Self.iCloudKey)
+        UserDefaults.standard.set(true, forKey: Self.iCloudAskedKey)
+        #endif
+    }
+
+    /** After joining or making a household: keeps iCloud Keychain's copy current, or asks once. */
+    private func householdChanged() {
+        #if os(iOS)
+        UserDefaults.standard.removeObject(forKey: Self.iCloudLeftKey)
+        if keepsCodeInICloud, let code = sync?.code { ICloudLinkCode.set(code) }
+        else if !UserDefaults.standard.bool(forKey: Self.iCloudAskedKey) { askAboutICloud = true }
+        #endif
+    }
+
     /** Takes this iPad out of sync: its copy leaves the relay; the other devices keep theirs. */
     func stopSync() async {
         guard let config = sync else { return }
@@ -949,6 +1006,11 @@ final class AppModel {
         syncError = nil
         syncedAt = nil
         Plus.shared.setHousehold(until: nil)
+        // The other devices keep the household, and iCloud Keychain's copy with it; this one stops
+        // keeping it, and doesn't join again by itself.
+        keepsCodeInICloud = false
+        UserDefaults.standard.set(false, forKey: Self.iCloudKey)
+        UserDefaults.standard.set(true, forKey: Self.iCloudLeftKey)
         try? await SyncClient.leave(config.relay, SyncCrypto.deriveKeys(config.code), device: config.device)
     }
 
@@ -964,6 +1026,8 @@ final class AppModel {
     /** Coming back to the front. */
     func becameActive() {
         Task {
+            // A link code another of this Apple Account's devices put in iCloud Keychain since.
+            await joinFromICloud()
             await syncNow()
             // Lists that went old while telly was in the background, or weren't fetched when it was woken there.
             await refreshIfStale()
