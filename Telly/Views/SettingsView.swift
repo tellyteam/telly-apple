@@ -211,15 +211,18 @@ private struct TellyPlusSection: View {
 
     /** Where the subscription is managed: Apple's sheet only for an App Store purchase. */
     @ViewBuilder private var manage: some View {
-        if plus.householdStore == "paddle" && !plus.bought {
+        switch plus.manage {
+        case .paddle:
             Text("This household's telly Plus was bought on a TV. Manage it from Paddle's emails.")
                 .font(.caption).foregroundStyle(Theme.muted)
-        } else if plus.householdStore == "apple" || plus.bought {
+        case .apple:
             #if os(iOS)
             Button("Manage subscription") { managing = true }
             #else
             Link("Manage subscription", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
             #endif
+        case .none:
+            EmptyView()
         }
     }
 

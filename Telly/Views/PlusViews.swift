@@ -22,7 +22,7 @@ struct PlusOfferView: View {
                     if reason == .general { Text("telly Plus").font(.title3.weight(.semibold)).foregroundStyle(Theme.accent) }
                 }
                 VStack(alignment: .leading, spacing: 14) {
-                    feature("arrow.triangle.2.circlepath", "Sync", "Progress, Continue watching and My List on every device, end-to-end encrypted.")
+                    feature("arrow.triangle.2.circlepath", "Sync", "Progress, Continue watching and My List, end-to-end encrypted.")
                     if Downloads.available {
                         feature("arrow.down.circle", "Downloads", "Save films and episodes to watch without a connection.")
                     }
@@ -65,7 +65,8 @@ struct PlusOfferView: View {
             Image(systemName: icon).font(.title2).foregroundStyle(Theme.accent).frame(width: 32)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.headline)
-                Text(text).font(.subheadline).foregroundStyle(Theme.muted)
+                // Wrapped, not cut short, under a two-line headline.
+                Text(text).font(.subheadline).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             }
         }
     }

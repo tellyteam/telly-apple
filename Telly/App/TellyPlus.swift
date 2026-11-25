@@ -126,6 +126,28 @@ final class Plus {
         trialAvailable = await Product.SubscriptionInfo.isEligibleForIntroOffer(for: Self.groupId)
     }
 
+    /** Where Settings → Manage subscription leads. */
+    enum Manage: Equatable {
+        /** Apple's subscriptions sheet. */
+        case apple
+        /** Bought on a TV: managed from Paddle's emails, never linked from an Apple app. */
+        case paddle
+        /** Nothing to manage from here (the Mac's included telly Plus, say). */
+        case none
+    }
+
+    /**
+     * Apple's sheet only for an App Store purchase: this Apple Account's own, or the relay saying the
+     * household's came from the App Store. A household bought on a TV says Paddle's emails.
+     */
+    nonisolated static func manage(store: String?, bought: Bool) -> Manage {
+        if bought || store == "apple" { return .apple }
+        if store == "paddle" { return .paddle }
+        return .none
+    }
+
+    var manage: Manage { Self.manage(store: householdStore, bought: bought) }
+
     /** The one name for the buy button: the free trial where it's still to be had. */
     var buyTitle: String { trialAvailable ? "Start free trial" : "Get telly Plus" }
 

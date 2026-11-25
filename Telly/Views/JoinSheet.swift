@@ -43,7 +43,7 @@ struct JoinSheet: View {
                     Text("It will pick up where you left off: progress, Continue watching and My List, end-to-end encrypted.")
                         .foregroundStyle(Theme.muted)
                     if app.linkingNeedsPlus {
-                        Text("Your household is part of telly Plus. \(Plus.shared.trialAvailable ? "Free for 3 days, then £4.99 a year for your household." : "")")
+                        Text(Plus.shared.trialAvailable ? "Adding it needs telly Plus: free for 3 days, then £4.99 a year for your household." : "Adding it needs telly Plus: £4.99 a year for your household.")
                             .font(.callout)
                     }
                 }

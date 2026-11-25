@@ -28,6 +28,15 @@ final class PlusOfferWordsTests: XCTestCase {
         XCTAssertEqual(text, "About €0.12 a week")
     }
 
+    /** GET …/plus's store decides where Manage subscription goes: never to Paddle from an Apple app. */
+    func testManageSubscriptionFollowsTheStore() {
+        XCTAssertEqual(Plus.manage(store: "apple", bought: false), .apple, "another family member's App Store purchase")
+        XCTAssertEqual(Plus.manage(store: "paddle", bought: false), .paddle)
+        XCTAssertEqual(Plus.manage(store: "paddle", bought: true), .apple, "bought here as well: Apple's sheet manages this one")
+        XCTAssertEqual(Plus.manage(store: nil, bought: true), .apple)
+        XCTAssertEqual(Plus.manage(store: nil, bought: false), .none, "recorded before the relay kept the store")
+    }
+
     @MainActor
     func testTheHeadlineFollowsWhatOpenedIt() {
         XCTAssertEqual(Plus.Offer.general.headline, "Pick up where you left off on all your devices")
