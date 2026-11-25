@@ -16,7 +16,6 @@ import SwiftUI
  *   watches it to the end (a series' last season), as if played through.
  * - `TELLY_DEV_FIRST_WATCH=10`: seconds in the player that count as the first proper watch (5 minutes), after which telly Plus is offered.
  * - `TELLY_DEV_PLUS=offer`: opens the telly Plus offer at launch (for the App Review screenshot).
- * - `TELLY_DEV_FIRST_RUN=join`: opens the first run's Join step (its QR link is printed to the console).
  * - `TELLY_DEV_JOIN=https://tv.gettelly.app/#id=…&key=…` (or `telly://join?…`): opens the sheet for a
  *   join QR code as if the in-app scanner had read it (a simulator has no camera).
  * - `TELLY_RELAY=http://localhost:8787`: a local relay (`npm run dev` in telly-sync) in place of telly's.

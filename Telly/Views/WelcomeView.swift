@@ -1,34 +1,46 @@
 import SwiftUI
 
 /**
- * telly's first run, the same on every device: Welcome, then joining the household's other
- * devices (if there are any), then the provider. A device that's linked already goes straight to
- * the provider.
+ * telly's first run: watch first. Welcome, then the provider. Joining the household's other
+ * devices comes later (Settings → telly Plus), or now by scanning a telly code or entering a link
+ * code. A device that's linked already goes straight to the provider.
  */
 struct FirstRunView: View {
     @Environment(AppModel.self) private var app
-    @State private var step: Step = .welcome
-
-    enum Step { case welcome, join, setup }
+    @State private var settingUp = false
+    #if os(macOS)
+    @State private var joining = false
+    #endif
 
     var body: some View {
-        if app.sync != nil || step == .setup {
-            SetupView(onBack: app.sync == nil ? { step = .welcome } : nil)
-        } else if step == .join {
-            JoinView(onBack: { step = .welcome }, onSetUp: { step = .setup })
+        if app.sync != nil || settingUp {
+            SetupView(onBack: app.sync == nil ? { settingUp = false } : nil)
         } else {
-            WelcomeView(onSetUp: { step = .setup }, onJoin: { step = .join })
-                #if DEBUG
-                .onAppear { if DevHooks.env["TELLY_DEV_FIRST_RUN"] == "join" { step = .join } }
-                #endif
+            #if os(macOS)
+            if joining {
+                JoinView(onBack: { joining = false }, onSetUp: { settingUp = true })
+            } else {
+                WelcomeView(onSetUp: { settingUp = true }, onJoin: { joining = true })
+            }
+            #else
+            WelcomeView(onSetUp: { settingUp = true })
+            #endif
         }
     }
 }
 
-/** The first screen: what telly is, and the two ways in. */
+/** The first screen: what telly is, and the ways in. */
 private struct WelcomeView: View {
+    @Environment(AppModel.self) private var app
     let onSetUp: () -> Void
+    #if os(macOS)
     let onJoin: () -> Void
+    #endif
+    @State private var scanning = false
+    @State private var typing = false
+    @State private var code = ""
+    @State private var linking = false
+    @State private var error: String?
 
     var body: some View {
         FirstRunCard {
@@ -44,23 +56,55 @@ private struct WelcomeView: View {
             .padding(.vertical, 6)
             VStack(alignment: .leading, spacing: 10) {
                 Button("Set up telly", action: onSetUp).buttonStyle(.borderedProminent)
+                #if os(iOS)
+                Button("Scan a telly code") { scanning = true }.buttonStyle(.bordered)
+                Button("Enter a link code") { typing.toggle() }.buttonStyle(.borderless)
+                #else
                 Button("I use telly on another device", action: onJoin).buttonStyle(.bordered)
+                #endif
             }
+            if typing {
+                HStack {
+                    TextField("Link code", text: $code, prompt: Text("ABCD-EFGH-JKMN-PQRS"))
+                        .textFieldStyle(.roundedBorder)
+                        .plainEntry(capitals: true).font(.body.monospaced())
+                    Button(linking ? "Joining…" : "Join") { link() }.buttonStyle(.borderedProminent)
+                        .disabled(linking || code.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                Text("The link code is in Settings → telly Plus on one of your other devices.")
+                    .font(.caption).foregroundStyle(Theme.muted)
+            }
+            if let error { Text(error).foregroundStyle(.orange).font(.callout) }
             Text("telly doesn't come with any channels: you'll need a TV provider.")
                 .font(.caption).foregroundStyle(Theme.faint)
         }
+        .tellyCodeScanner(isPresented: $scanning)
     }
 
     private func point(_ icon: String, _ text: String) -> some View {
         Label { Text(text) } icon: { Image(systemName: icon).foregroundStyle(Theme.accent).frame(width: 26) }
     }
+
+    /** Joins the household the typed link code is for; without telly Plus, it's offered first. */
+    private func link() {
+        guard let normal = SyncCrypto.normaliseCode(code) else {
+            error = "That code isn't right: it's 16 letters and numbers, like ABCD-EFGH-JKMN-PQRS."
+            return
+        }
+        linking = true
+        error = nil
+        Task {
+            do { try await app.joinHousehold(.link(normal)) } catch { self.error = error.localizedDescription }
+            linking = false
+        }
+    }
 }
 
+#if os(macOS)
 /**
- * Joining the household's other devices: this device shows a QR code for one of them to scan (no
- * code to type), or takes that device's code. An iPhone or iPad leads with scanning, since the
- * device it joins is most often a TV, which has no camera; its own QR code is there for joining
- * from another iPhone or iPad.
+ * The Mac's Join step, kept while the Mac is on hold: it shows a QR code for an iPhone or iPad in
+ * the household to scan (no code to type), or takes a link code. iPhone and iPad have no Join step:
+ * their Welcome scans a telly code instead.
  */
 struct JoinView: View {
     @Environment(AppModel.self) private var app
@@ -71,9 +115,6 @@ struct JoinView: View {
     @State private var join = SyncJoin.new()
     @State private var typing = false
     @State private var code = ""
-    @State private var scanning = false
-    /** An iPhone or iPad shows its own QR code only when asked: for joining from another one. */
-    @State private var showingQR = false
     @State private var linking = false
     /** A code that arrived but couldn't link yet: the household has no telly Plus. */
     @State private var waitingForPlus: String?
@@ -86,36 +127,14 @@ struct JoinView: View {
                 Text("Syncing is part of telly Plus. Without it, each device keeps its own progress.")
                     .font(.callout).foregroundStyle(Theme.muted)
             }
-            #if os(iOS)
-            Text("On your TV, go to Settings → Sync → Show code, then scan the QR code it shows.")
-                .foregroundStyle(Theme.muted)
-            VStack(alignment: .leading, spacing: 10) {
-                Button(linking ? "Linking…" : "Scan your TV's code") { scanning = true }
-                    .buttonStyle(.borderedProminent).disabled(linking)
-                Button("Type the code instead") { typing.toggle() }.buttonStyle(.bordered)
-            }
-            codeEntry
-            if let error { Text(error).foregroundStyle(.orange).font(.callout) }
-            DisclosureGroup("Joining from another iPhone or iPad?", isExpanded: $showingQR) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("On that one, open telly and go to Settings → Sync → Scan a new device's QR code.")
-                        .font(.callout).foregroundStyle(Theme.muted)
-                    ownQR
-                }
-                .padding(.top, 8)
-            }
-            .tint(Theme.accent)
-            Divider().padding(.vertical, 4)
-            #else
-            Text("On your iPhone or iPad, open telly and go to Settings → Sync → Scan a new device's QR code.")
+            Text("On your iPhone or iPad, open telly and go to Settings → telly Plus → Add a device.")
                 .foregroundStyle(Theme.muted)
             ownQR
             Divider().padding(.vertical, 4)
-            Text("Or use its code, from Settings → Sync → Show code.").font(.callout).foregroundStyle(Theme.muted)
-            Button("I have a code") { typing.toggle() }.buttonStyle(.bordered)
+            Text("Or use its link code, from Settings → telly Plus → Show link code.").font(.callout).foregroundStyle(Theme.muted)
+            Button("Enter a link code") { typing.toggle() }.buttonStyle(.bordered)
             codeEntry
             if let error { Text(error).foregroundStyle(.orange).font(.callout) }
-            #endif
             HStack(spacing: 16) {
                 // The way on once telly Plus was turned down for the code that came in.
                 if declinedPlus {
@@ -127,9 +146,6 @@ struct JoinView: View {
             }
             Text("Provider logins are never part of sync: you'll sign in on this \(Device.name) next.")
                 .font(.caption).foregroundStyle(Theme.faint)
-        }
-        .qrScanner(isPresented: $scanning) { text in
-            if let found = SyncLink.parse(text) { link(found) } else { error = "That QR code isn't a telly sync code." }
         }
         // While the QR code shows, the relay is asked every few seconds whether a code has been left.
         .task(id: JoinWait(join: join, showing: qrShown)) {
@@ -161,14 +177,8 @@ struct JoinView: View {
     /** A code came in, telly Plus was offered for it, and the offer was closed without buying. */
     private var declinedPlus: Bool { waitingForPlus != nil && Plus.shared.offered == nil && !Plus.shared.unlocked }
 
-    /** Whether this device's QR code is on screen (always, where there's no camera to scan with). */
-    private var qrShown: Bool {
-        #if os(iOS)
-        showingQR
-        #else
-        true
-        #endif
-    }
+    /** Whether this device's QR code is on screen: always, as a Mac has no camera to scan with. */
+    private var qrShown: Bool { true }
 
     private struct JoinWait: Equatable {
         let join: SyncJoin
@@ -221,6 +231,7 @@ struct JoinView: View {
         }
     }
 }
+#endif
 
 /** The first run's card on the page, as the sign-in form has. */
 struct FirstRunCard<Content: View>: View {
