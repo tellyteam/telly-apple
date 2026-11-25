@@ -36,7 +36,7 @@ enum DevHooks {
 
     /** TELLY_DEV_JOIN: the link, as if the in-app scanner had just read it. */
     @MainActor static func scanned(_ app: AppModel) {
-        if let link = env["TELLY_DEV_JOIN"] { app.pendingJoin = SyncJoin.parse(link) }
+        if let link = env["TELLY_DEV_JOIN"] { _ = app.scanned(link) }
     }
 }
 

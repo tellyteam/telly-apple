@@ -1,28 +1,34 @@
 import SwiftUI
 
-/** What the join sheet did, for RootView to show once it has closed. */
+/** What the add sheet did, for RootView to show once it has closed. */
 enum JoinOutcome {
-    case linked, sent, plusNeeded
+    /** Added to the household; with [sent], its provider went too. */
+    case added(sent: Bool)
+    /** Only the provider went. */
+    case sent
+    case plusNeeded
 }
 
 /**
- * Answering a device's join QR code (telly-lg's SETUP-BY-PHONE.md, section 5): link it for sync,
- * send it a provider, or both, in one sealed message. Sending a provider is off every time the
- * sheet opens, and only offered to a device showing the new code; the login is read from the
- * Keychain only when Send is pressed, and the password is never shown.
+ * "Add this TV to your household?": answering a device's telly code (PROTOCOL.md, "Joining by QR
+ * code from the new device"). This device's link code and, ticked by default, a provider go in one
+ * sealed message to the box only the device showing the code can open. The login is read from the
+ * Keychain only when Add is pressed, and the password is never shown. Adding needs a household with
+ * telly Plus; without it, the provider can still be sent on its own.
  */
 struct JoinSheet: View {
     let join: SyncJoin
     let done: (JoinOutcome) -> Void
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
-    @State private var link = true
-    @State private var sendProvider = false
+    @State private var sendProvider = true
     @State private var providerId: String?
     @State private var sending = false
     @State private var error: String?
 
     private var providerOffered: Bool { join.takesProvider && !app.providers.isEmpty }
+    /** A TV's code (the new form); an older device's shows the old one. */
+    private var device: String { join.takesProvider ? "TV" : "device" }
 
     /** The provider that will be sent, if one is. */
     private var chosen: SavedProvider? {
@@ -34,14 +40,16 @@ struct JoinSheet: View {
         NavigationStack {
             Form {
                 SwiftUI.Section {
-                    Toggle("Link it for sync", isOn: $link)
-                } footer: {
-                    Text("Shares progress, Continue watching and My List with this \(Device.name), end-to-end encrypted. Provider logins are never part of sync."
-                         + (app.linkingNeedsPlus ? " Sync is part of telly Plus: you'll be offered it first." : ""))
+                    Text("It will pick up where you left off: progress, Continue watching and My List, end-to-end encrypted.")
+                        .foregroundStyle(Theme.muted)
+                    if app.linkingNeedsPlus {
+                        Text("Your household is part of telly Plus. \(Plus.shared.trialAvailable ? "Free for 3 days, then £4.99 a year for your household." : "")")
+                            .font(.callout)
+                    }
                 }
                 if providerOffered {
                     SwiftUI.Section {
-                        Toggle("Send a provider", isOn: $sendProvider)
+                        Toggle("Also send \(chosen?.provider.name ?? app.provider?.name ?? "your provider")", isOn: $sendProvider)
                         if sendProvider {
                             if app.providers.count > 1 {
                                 Picker("Provider", selection: $providerId) {
@@ -51,24 +59,27 @@ struct JoinSheet: View {
                             if let p = chosen?.provider { details(p) }
                         }
                     } footer: {
-                        Text("It's sealed so only the TV showing the code can read it, and telly's relay can't.")
+                        Text("It's sealed so only the TV showing the code can read it, and telly's relay can't. Provider logins are never part of sync.")
                     }
                 }
                 SwiftUI.Section {
                     if let error { Text(error).foregroundStyle(.orange).font(.callout) }
-                    Text("Only do this for a device of your own that is showing this code in front of you.")
+                    if app.linkingNeedsPlus, chosen != nil {
+                        Button(sending ? "Sending…" : "Just send \(chosen?.provider.name ?? "the provider")") { send(link: false) }.disabled(sending)
+                    }
+                    Text("Only do this for a \(device) of your own that is showing this code in front of you.")
                         .font(.callout).foregroundStyle(Theme.muted)
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle(join.takesProvider ? "Set up your TV" : "Link your new device")
+            .navigationTitle("Add this \(device) to your household?")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(sending ? "Sending…" : "Send") { send() }.disabled(sending || (!link && chosen == nil))
+                    Button(sending ? "Adding…" : "Add") { send(link: true) }.disabled(sending)
                 }
             }
         }
@@ -97,9 +108,10 @@ struct JoinSheet: View {
         return c.string?.replacingOccurrences(of: "=telly-hidden", with: "=••••") ?? url
     }
 
-    private func send() {
+    private func send(link: Bool) {
         error = nil
-        // Starting a household needs telly Plus: its offer opens instead, and the code can be scanned again.
+        // Starting a household needs telly Plus: its offer opens instead, and this sheet comes back
+        // once it's on (the TV's code lasts 10 minutes).
         if link && app.linkingNeedsPlus {
             done(.plusNeeded)
             dismiss()
@@ -109,7 +121,7 @@ struct JoinSheet: View {
         Task {
             do {
                 try await app.sendJoin(join, link: link, providerId: chosen?.id)
-                done(chosen != nil ? .sent : .linked)
+                done(link ? .added(sent: chosen != nil) : .sent)
                 dismiss()
             } catch {
                 self.error = error.localizedDescription

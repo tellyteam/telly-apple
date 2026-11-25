@@ -36,9 +36,32 @@ struct SavedProvider: Codable, Identifiable, Equatable {
     var changedAt: Double?
 }
 
-struct PendingLink: Identifiable, Equatable {
-    let code: String
-    var id: String { code }
+/**
+ * A telly code the app's own scanner read, waiting for the person to confirm. Never one the system
+ * opened: see [AppModel.open].
+ */
+enum ScannedCode: Identifiable, Equatable {
+    /** A device showing its code to be added: this one fills its box, with the link code and a provider. */
+    case addDevice(SyncJoin)
+    /** An add code: the device showing it left its household's link code in the box, to join. */
+    case joinHousehold(SyncJoin)
+    /** An older device's `telly://sync` code, with its household's link code in it. */
+    case link(String)
+
+    var id: String {
+        switch self {
+        case let .addDevice(j): return "add-\(j.id)"
+        case let .joinHousehold(j): return "join-\(j.id)"
+        case let .link(code): return "link-\(code)"
+        }
+    }
+
+    /** What the scanner read, or nil if it isn't a telly code. */
+    static func parse(_ text: String) -> ScannedCode? {
+        if let join = SyncJoin.parse(text) { return join.add ? .joinHousehold(join) : .addDevice(join) }
+        if let code = SyncLink.parse(text) { return .link(code) }
+        return nil
+    }
 }
 
 /** Kept in the Keychain: the link code is the household's only secret. */
@@ -105,10 +128,13 @@ final class AppModel {
     var page: Page? = .home
 
     var sync: SyncConfig?
-    /** A sync link opened from a QR code, waiting for the user to confirm. */
-    var pendingLink: PendingLink?
-    /** A new device's join QR code, scanned here, waiting for the user to confirm. */
-    var pendingJoin: SyncJoin?
+    /** A telly code the in-app scanner read, waiting for the user to confirm. */
+    var scannedCode: ScannedCode?
+    /**
+     * A household's link code that came in (from an add code, say) while this device had no telly
+     * Plus and the household didn't either: it joins once telly Plus is on.
+     */
+    var joinAfterPlus: String?
     var syncBusy = false
     var syncedAt: Double?
     var syncError: String?
@@ -763,21 +789,48 @@ final class AppModel {
     // MARK: Sync
 
     /**
-     * A `telly://sync` link from the Camera app: asks before linking. A join link (`telly://join`,
-     * or `https://tv.gettelly.app/#…`, which is never registered as a universal link) is ignored
-     * here: answering it hands over this household's code or a provider login, and it could come
-     * from a message or web page, so it's only taken from the in-app scanner (Settings).
+     * A link the system opened (the Camera app, a message, a web page): ignored. Every telly code
+     * hands over a household's code or a provider login, or joins this device to someone's
+     * household, so it's only acted on when telly's own scanner read it off a screen in front of
+     * the person (see [scanned]). `tv.gettelly.app` is never registered as a universal link.
      */
-    func open(_ url: URL) {
-        guard let code = SyncLink.parse(url.absoluteString) else { return }
-        if sync?.code == code { return }
-        pendingLink = PendingLink(code: code)
+    func open(_ url: URL) {}
+
+    /** What telly's own scanner read: asks before doing anything. False if it isn't a telly code. */
+    func scanned(_ text: String) -> Bool {
+        guard let code = ScannedCode.parse(text) else { return false }
+        // This household's own code: nothing to do.
+        if case let .link(c) = code, c == sync?.code { return true }
+        scannedCode = code
+        return true
     }
 
-    /** Links with a confirmed QR code. */
-    func confirmLink(_ link: PendingLink) async throws {
-        if pendingLink == link { pendingLink = nil }
-        try await startSync(code: link.code)
+    /**
+     * Joins the household an add code or a `telly://sync` code is for, once the person said yes.
+     * An add code's box is collected now (it can only be collected once). Without telly Plus, and
+     * with a household that hasn't got it either, the code waits while telly Plus is offered.
+     */
+    func joinHousehold(_ code: ScannedCode) async throws {
+        if scannedCode == code { scannedCode = nil }
+        let linkCode: String
+        switch code {
+        case let .joinHousehold(join):
+            guard let found = try await SyncClient.collectJoin(sync?.relay ?? Self.relay, join) else {
+                throw SyncError(message: "That code has been used or has run out. Show a new one on your TV and scan it again.")
+            }
+            linkCode = found
+        case let .link(found):
+            linkCode = found
+        case .addDevice:
+            return
+        }
+        if sync?.code == linkCode { return }
+        do {
+            try await startSync(code: linkCode)
+        } catch where !Plus.shared.unlocked {
+            joinAfterPlus = linkCode
+            Plus.shared.offered = .household
+        }
     }
 
     /** Linking another device here would start a household, which needs telly Plus first. */

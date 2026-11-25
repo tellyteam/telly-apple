@@ -15,6 +15,11 @@ struct SyncJoin: Equatable, Identifiable {
     let key: [UInt8]
     /** The code was the `tv.gettelly.app` form, so the device showing it can take a provider too. */
     var takesProvider = false
+    /**
+     * An add code (`add=1`): a device already in a household put its sealed link code in the box
+     * itself, for this one to collect and join (PROTOCOL.md, "Adding a phone to a set-up device").
+     */
+    var add = false
 
     /** What a join box holds: at least one of the two. */
     struct Message: Equatable {
@@ -42,6 +47,7 @@ struct SyncJoin: Equatable, Identifiable {
         guard let c = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
         let items: [URLQueryItem]?
         let takesProvider: Bool
+        var add = false
         switch c.scheme?.lowercased() {
         case "telly":
             guard c.host?.lowercased() == "join" else { return nil }
@@ -56,6 +62,8 @@ struct SyncJoin: Equatable, Identifiable {
             f.percentEncodedQuery = fragment
             items = f.queryItems
             takesProvider = true
+            // plus= and setup= are for the web page: adding the device brings the household's telly Plus.
+            add = items?.first(where: { $0.name == "add" })?.value == "1"
         default:
             return nil
         }
@@ -63,7 +71,7 @@ struct SyncJoin: Equatable, Identifiable {
               id.count == 32, id.allSatisfy(\.isHexDigit),
               let key = items?.first(where: { $0.name == "key" })?.value.flatMap(unbase64url), key.count == 32
         else { return nil }
-        return SyncJoin(id: id, key: [UInt8](key), takesProvider: takesProvider)
+        return SyncJoin(id: id, key: [UInt8](key), takesProvider: takesProvider, add: add)
     }
 
     private var aad: Data { Data("telly-join v1|\(id)".utf8) }

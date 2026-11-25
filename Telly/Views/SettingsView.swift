@@ -112,25 +112,14 @@ struct SettingsView: View {
 private struct SetUpTVSection: View {
     @Environment(AppModel.self) private var app
     @State private var scanning = false
-    @State private var error: String?
 
     var body: some View {
         SwiftUI.Section {
-            Button("Set up a TV") { error = nil; scanning = true }
-            if let error { Text(error).foregroundStyle(.orange).font(.callout) }
+            Button("Scan a telly code") { scanning = true }
         } footer: {
             Text("Scan the code a telly TV app shows, to send it a provider without typing it with the remote.")
         }
-        .qrScanner(isPresented: $scanning) { text in
-            if let join = SyncJoin.parse(text) {
-                app.pendingJoin = join
-            } else if let code = SyncLink.parse(text) {
-                // Another device's sync code: asks before linking this one, as from the Camera app.
-                if app.sync?.code != code { app.pendingLink = PendingLink(code: code) }
-            } else {
-                error = "That QR code isn't a telly one."
-            }
-        }
+        .tellyCodeScanner(isPresented: $scanning)
     }
 }
 #endif
@@ -167,7 +156,7 @@ private struct SyncSection: View {
                 }
                 Button(app.syncBusy ? "Syncing…" : "Sync now") { Task { await app.syncNow(force: true) } }.disabled(app.syncBusy)
                 #if os(iOS)
-                Button("Scan a new device's QR code") { scanning = true }
+                Button("Scan a telly code") { scanning = true }
                 #endif
                 Text("Provider logins are never part of sync: sign in on each device, or send one to a TV from Set up a TV.").font(.caption).foregroundStyle(Theme.muted)
                 Button("Stop syncing on this \(Device.name)", role: .destructive) { confirmStop = true }
@@ -196,7 +185,7 @@ private struct SyncSection: View {
                 Button("I already have telly Plus") { joining.toggle() }
                 if joining {
                     #if os(iOS)
-                    Button("Scan another device's QR code") { scanning = true }.disabled(linking)
+                    Button("Scan a telly code") { scanning = true }.disabled(linking)
                     #endif
                     HStack {
                         TextField("Code", text: $code, prompt: Text("ABCD-EFGH-JKMN-PQRS"))
@@ -217,16 +206,7 @@ private struct SyncSection: View {
                 Link("The relay keeps no logs. Read its policy", destination: URL(string: "https://github.com/tellyteam/telly-sync/blob/main/PRIVACY.md")!)
             }
         }
-        .qrScanner(isPresented: $scanning) { text in
-            if let join = SyncJoin.parse(text) {
-                // A new device's QR code: the sheet asks what to send it (RootView).
-                app.pendingJoin = join
-            } else if let found = SyncLink.parse(text) {
-                link(found)
-            } else {
-                error = "That QR code isn't a telly one."
-            }
-        }
+        .tellyCodeScanner(isPresented: $scanning)
         .confirmationDialog("Stop syncing on this \(Device.name)?", isPresented: $confirmStop, titleVisibility: .visible) {
             Button("Stop syncing", role: .destructive) { Task { await app.stopSync(); showCode = true } }
         } message: { Text("Your other devices keep syncing with each other.") }

@@ -21,8 +21,10 @@ struct RootView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.compactWidth) private var compact
     @State private var linkError: String?
-    @State private var joined = false
-    @State private var sentProvider = false
+    /** What adding a device did, once its sheet has closed. */
+    @State private var added: String?
+    /** A TV's code that waits for telly Plus, and when it was scanned. */
+    @State private var addAfterPlus: (SyncJoin, Date)?
     /** What the join sheet did, acted on once it has closed. */
     @State private var joinOutcome: JoinOutcome?
 
@@ -99,47 +101,78 @@ struct RootView: View {
             }
         }
         #endif
-        .alert("Link this \(Device.name) for sync?", isPresented: Binding(get: { app.pendingLink != nil && app.provider != nil }, set: { if !$0 { app.pendingLink = nil } })) {
-            Button("Link") {
-                // Taken now: closing the alert clears the pending link before the task runs.
-                guard let link = app.pendingLink else { return }
-                // Sync is part of telly Plus: the code can be scanned again once it's on.
-                guard Plus.shared.unlocked else { Plus.shared.offered = .household; return }
+        .alert(joinTitle, isPresented: Binding(get: { joinAsked != nil }, set: { if !$0 { app.scannedCode = nil } })) {
+            Button("Join") {
+                // Taken now: closing the alert clears the scanned code before the task runs.
+                guard let code = joinAsked else { return }
                 Task {
-                    do { try await app.confirmLink(link) } catch { linkError = error.localizedDescription }
+                    do { try await app.joinHousehold(code) } catch { linkError = error.localizedDescription }
                 }
             }
-            Button("Cancel", role: .cancel) { app.pendingLink = nil }
+            Button("Cancel", role: .cancel) { app.scannedCode = nil }
         } message: {
-            // The link may have come from a message or web page: whoever made it would see what's watched here.
+            // Whoever showed the code would see what's watched here: only a device of the person's own.
             Text((app.sync == nil
-                  ? "Your progress, Continue watching and My List will be shared with the device that showed this code, end-to-end encrypted."
-                  : "This replaces the devices this \(Device.name) syncs with now.")
-                 + " Only link if one of your own devices is showing this code.")
+                  ? "This \(Device.name) will pick up where you left off on your other devices: progress, Continue watching and My List, end-to-end encrypted."
+                  : "This \(Device.name) leaves the household it's in now.")
+                 + " Only join if one of your own devices is showing this code.")
         }
-        .sheet(item: $app.pendingJoin, onDismiss: joinClosed) { join in
-            JoinSheet(join: join) { joinOutcome = $0 }.environment(app)
+        .sheet(item: Binding(get: { if case let .addDevice(j) = app.scannedCode { return j } else { return nil } },
+                             set: { if $0 == nil { app.scannedCode = nil } }), onDismiss: joinClosed) { join in
+            JoinSheet(join: join) { outcome in
+                joinOutcome = outcome
+                if case .plusNeeded = outcome { addAfterPlus = (join, Date()) }
+            }
+            .environment(app)
         }
-        .alert("Linked", isPresented: $joined) {
+        .alert(addedTitle, isPresented: Binding(get: { added != nil }, set: { if !$0 { added = nil } })) {
             Button("OK", role: .cancel) {}
-        } message: { Text("Your new device is linked. It picks up where you left off once it's signed in to your provider.") }
-        .alert("Sent", isPresented: $sentProvider) {
-            Button("OK", role: .cancel) {}
-        } message: { Text("Check the details on your TV and connect.") }
-        .alert("Couldn't link", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
+        } message: { Text(added ?? "") }
+        .alert("Couldn't add it", isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(linkError ?? "") }
         .sheet(item: Binding(get: { Plus.shared.offered }, set: { Plus.shared.offered = $0 })) { PlusOfferView(reason: $0) }
-        // telly Plus starting (bought, restored, renewed): a linked device catches up straight away.
-        .onChange(of: Plus.shared.unlocked) { _, on in if on { Task { await app.syncNow(force: true) } } }
+        // telly Plus starting (bought, restored, renewed): a linked device catches up straight away,
+        // and a code that was waiting for it carries on.
+        .onChange(of: Plus.shared.unlocked) { _, on in
+            guard on else { return }
+            Task {
+                if let code = app.joinAfterPlus {
+                    app.joinAfterPlus = nil
+                    do { try await app.startSync(code: code) } catch { linkError = error.localizedDescription }
+                }
+                await app.syncNow(force: true)
+                // A TV's code lasts 10 minutes: within that, its sheet comes back to finish adding it.
+                if let (join, at) = addAfterPlus, Date().timeIntervalSince(at) < 9 * 60 { app.scannedCode = .addDevice(join) }
+                addAfterPlus = nil
+            }
+        }
     }
+
+    /** The scanned code that asks to join a household, if that's what's waiting. */
+    private var joinAsked: ScannedCode? {
+        switch app.scannedCode {
+        case .joinHousehold?, .link?: return app.scannedCode
+        default: return nil
+        }
+    }
+
+    private var joinTitle: String {
+        if case .joinHousehold? = joinAsked { return "Join this TV's household?" }
+        return "Join this household?"
+    }
+
+    private var addedTitle: String { added == Self.sentMessage ? "Sent" : "Added to your household" }
+    private static let sentMessage = "Check the details on your TV and connect."
 
     private func joinClosed() {
         switch joinOutcome {
-        case .linked: joined = true
-        case .sent: sentProvider = true
-        // Sync is part of telly Plus: the code can be scanned again once it's on.
-        case .plusNeeded: Plus.shared.offered = .addTV
+        case let .added(sent)?:
+            added = sent ? "It picks up where you left off. Check the provider's details on your TV and connect."
+                         : "It picks up where you left off once it's signed in to your provider."
+        case .sent?: added = Self.sentMessage
+        // Adding needs a household, which is telly Plus: the sheet comes back once it's on.
+        case .plusNeeded?: Plus.shared.offered = .addTV
         case nil: break
         }
         joinOutcome = nil

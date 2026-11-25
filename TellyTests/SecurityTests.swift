@@ -3,17 +3,25 @@ import XCTest
 
 @MainActor
 final class SecurityTests: XCTestCase {
-    /** A join link hands over the household's code, so one from a message or web page is ignored. */
-    func testJoinLinksOnlyComeFromTheScanner() throws {
+    /**
+     * A telly code hands over the household's code or a provider login, or joins someone's
+     * household, so one the system opened (a message, a web page, the Camera app) is ignored.
+     */
+    func testTellyCodesOnlyComeFromTheScanner() throws {
         let app = AppModel()
         app.open(try XCTUnwrap(URL(string: SyncJoin.new().url)))
-        XCTAssertNil(app.pendingJoin)
+        XCTAssertNil(app.scannedCode)
         var tv = SyncJoin.new()
         tv.takesProvider = true
         app.open(try XCTUnwrap(URL(string: tv.url)))
-        XCTAssertNil(app.pendingJoin, "nor a TV's, which could also hand over a provider login")
+        XCTAssertNil(app.scannedCode, "nor a TV's, which could also hand over a provider login")
+        app.open(try XCTUnwrap(URL(string: tv.url + "&add=1")))
+        XCTAssertNil(app.scannedCode, "nor an add code, which would join someone else's household")
         app.open(try XCTUnwrap(URL(string: SyncLink.url(code: "0123456789ABCDEF"))))
-        XCTAssertEqual(app.pendingLink?.code, "0123456789ABCDEF", "a sync link still asks first")
+        XCTAssertNil(app.scannedCode, "nor an old sync link")
+
+        XCTAssertTrue(app.scanned(tv.url))
+        XCTAssertEqual(app.scannedCode, .addDevice(tv), "telly's own scanner asks first")
     }
 
     /** An https address that redirects to plain HTTP isn't followed while plain HTTP is off. */

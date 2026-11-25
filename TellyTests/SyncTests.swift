@@ -312,6 +312,22 @@ final class SyncJoinTests: XCTestCase {
         }
     }
 
+    /** One scanner reads every kind: which way it goes comes from add=1; plus= and setup= are the page's. */
+    func testTheScannerTellsAddCodesFromNewDevices() throws {
+        let new = try XCTUnwrap(SyncJoin.parse(Self.link))
+        XCTAssertEqual(ScannedCode.parse(Self.link), .addDevice(new))
+        XCTAssertEqual(ScannedCode.parse(Self.link + "&plus=" + String(repeating: "ab", count: 16) + "&setup=0"), .addDevice(new))
+        let add = try XCTUnwrap(SyncJoin.parse(Self.link + "&add=1"))
+        XCTAssertTrue(add.add)
+        XCTAssertEqual(ScannedCode.parse(Self.link + "&add=1"), .joinHousehold(add))
+        XCTAssertEqual(ScannedCode.parse("https://tv.gettelly.app/#add=1&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&id=00112233445566778899aabbccddeeff"), .joinHousehold(add), "in any order")
+        XCTAssertEqual(ScannedCode.parse(Self.link + "&add=0"), .addDevice(new))
+        XCTAssertEqual(ScannedCode.parse("telly://sync?code=0123-4567-89AB-CDEF"), .link("0123456789ABCDEF"))
+        XCTAssertNil(ScannedCode.parse("telly://join?id=00112233445566778899aabbccddeeff&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8&add=1").map { if case .joinHousehold = $0 { return true } else { return nil } } ?? nil,
+                     "the old form has no add codes")
+        XCTAssertNil(ScannedCode.parse("https://example.com/"))
+    }
+
     func testOpensTheSharedProviderVectors() throws {
         let join = try XCTUnwrap(SyncJoin.parse(Self.link))
         let a = try XCTUnwrap(SyncCrypto.unhex(Self.vectorA))
